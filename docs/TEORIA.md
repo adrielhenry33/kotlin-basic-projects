@@ -1487,6 +1487,96 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 > modifier: Modifier = Modifier → tipo = valor vazio
 > Dentro do componente: modifier (minúsculo) no raiz, nunca Modifier novo
 
+#### Checagem da Etapa 2: perguntas para responder sem consultar (2026-10-05)
+
+1. Quem cria a `MainActivity` e chama o `onCreate`? O que o `setContent { }` faz (ponte com o React)?
+2. Para que serve o `innerPadding` que o `Scaffold` entrega? O que acontece na tela se você ignorá-lo, com o `enableEdgeToEdge()` ligado?
+3. Em `modifier: Modifier = Modifier`, o que é cada um dos dois `Modifier`? Dentro do componente, por que usar o `modifier` (minúsculo) no elemento raiz em vez de começar um `Modifier` novo?
+4. `themes.xml` e `Theme.kt`: o que cada um controla, e por que existem os dois?
+5. No `AndroidManifest.xml`, o que faz uma Activity ser a que abre ao tocar no ícone do app?
+6. `minSdk`, `compileSdk` e `targetSdk`: o que cada um decide, e qual você sobe primeiro sem medo? Por quê?
+7. Para adicionar uma biblioteca nova, em quais dois arquivos você mexe? Por que as libs do Compose aparecem sem versão no `build.gradle.kts`?
+8. Por que a função de `@Preview` não recebe parâmetros? E por que um `Text` fora de `Surface` não muda de cor numa preview com `uiMode = UI_MODE_NIGHT_YES`?
+
+#### Etapa 3, parte 1: ordem do Modifier e layouts (2026-10-05)
+
+> A checagem da Etapa 2 foi pulada a pedido (ficou nas PENDÊNCIAS). Etapa 3 em 3 exercícios: **3.1** Modifier + layouts (playground com previews) → **3.2** `TextField` numérico + `toDoubleOrNull` → **3.3** o conversor (enunciado final).
+
+**1. A ordem do Modifier: de fora para dentro**
+
+A cadeia é lida da esquerda para a direita, e **cada item embrulha o que vem depois**. O primeiro é a casca mais externa.
+
+```kotlin
+Text("A", Modifier.background(Color.Yellow).padding(16.dp))
+// background primeiro → a cor pinta TUDO; o padding vem depois → recuo DENTRO da cor
+// ≈ CSS: padding: 16px
+
+Text("B", Modifier.padding(16.dp).background(Color.Yellow))
+// padding primeiro → 16dp de espaço SEM cor em volta; a cor só pinta dali pra dentro
+// ≈ CSS: margin: 16px
+```
+
+- **Compose não tem `margin`.** Margem = `padding` **antes** do `background`; padding interno = `padding` **depois**. Dá pra usar os dois na mesma cadeia: `Modifier.padding(8.dp).background(cor).padding(16.dp)`.
+- Mesmo raciocínio com tamanho: `Modifier.padding(8.dp).size(100.dp)` ocupa 116dp; `Modifier.size(100.dp).padding(8.dp)` ocupa 100dp e o conteúdo fica com 84dp.
+- E com clique: `clickable` antes do `padding` = a área de toque inclui o recuo; depois = só o miolo.
+
+**2. `Column`, `Row`, `Box` e `Spacer`** (≈ flexbox)
+
+| Composable | Faz | Ponte CSS/RN |
+|---|---|---|
+| `Column` | empilha na vertical | `flex-direction: column` |
+| `Row` | lado a lado | `flex-direction: row` |
+| `Box` | empilha **um sobre o outro** | `position: absolute` dentro de um `relative` |
+| `Spacer(Modifier.height(8.dp))` | espaço vazio | `<View style={{height: 8}} />` |
+
+Dois parâmetros controlam a posição dos filhos:
+
+| | Eixo principal (≈ `justifyContent`) | Eixo cruzado (≈ `alignItems`) |
+|---|---|---|
+| `Column` | `verticalArrangement = Arrangement.spacedBy(8.dp)` / `.Center` / `.SpaceBetween` | `horizontalAlignment = Alignment.CenterHorizontally` |
+| `Row` | `horizontalArrangement = Arrangement.spacedBy(8.dp)` / ... | `verticalAlignment = Alignment.CenterVertically` |
+| `Box` | — | `contentAlignment = Alignment.Center` |
+
+- `Arrangement.spacedBy(8.dp)` ≈ `gap: 8px`. Padrão de mercado no lugar de um `Spacer` entre cada filho.
+- Pegadinha do nome: na `Column` o eixo principal é vertical, então é `verticalArrangement` + `horizontalAlignment` (cruzado). Na `Row`, o inverso.
+- Imports: `androidx.compose.foundation.layout.*` (Column, Row, Box, Spacer, Arrangement, padding, size), `androidx.compose.foundation.background`, `androidx.compose.ui.Alignment`, `androidx.compose.ui.graphics.Color`, `androidx.compose.ui.unit.dp`. `Alt+Enter` resolve.
+- Cores fixas (`Color.Yellow`) só no playground. Em tela de verdade: `MaterialTheme.colorScheme.primaryContainer` etc., pra respeitar o tema claro/escuro.
+
+> 📝 Caderno
+> Modifier: de fora pra dentro · o 1º é a casca externa
+> padding ANTES do background = margem · DEPOIS = padding interno · Compose não tem margin
+> Column = vertical · Row = horizontal · Box = um sobre o outro
+> Arrangement = eixo principal (justifyContent) · Alignment = eixo cruzado (alignItems)
+> spacedBy(8.dp) ≈ gap
+
+**Exercício 3.1: `LayoutPlayground.kt`** (arquivo novo em `ui/`, só previews; não mexer na `MainActivity`)
+
+1. **Previsão antes de rodar.** Duas previews com os `Text` A e B de cima. Antes de olhar o resultado, escrever num comentário qual vai ter a cor colada no texto e qual vai ter margem. Depois conferir.
+2. **Margem + padding na mesma cadeia.** Um `Text` com borda preta de 2dp, 8dp de margem **dentro da borda e fora da cor**, fundo amarelo e 16dp de padding interno. Uma cadeia só. (`border(2.dp, Color.Black)` vem de `androidx.compose.foundation.border`.)
+3. **Layout: card de playlist.** Um composable `CardPlaylist(modifier: Modifier = Modifier)` com:
+   - uma `Column` com padding 16dp e itens espaçados 8dp;
+   - título "Rock Nacional" e, embaixo, "42 músicas";
+   - uma `Row` com 3 "chips" (`Box` 72×32dp, fundo colorido, texto centralizado): "Anos 80", "Anos 90", "Ao vivo", com 8dp entre eles.
+   - Assinatura padrão: o `modifier` recebido vai no elemento raiz.
+   - Preview com `TemperatureConverterTheme` em volta.
+
+**Erros comuns vistos no 3.1 (2026-10-05)**
+
+- `Column(modifier) { modifier.padding(16.dp) ... }`: **não faz nada**. As chaves recebem só os filhos. O Modifier é imutável e `.padding()` devolve um novo, que ali é descartado. Padding vai **no parâmetro**: `Column(modifier = modifier.padding(16.dp))`.
+- Dois elementos soltos na raiz (`Column` e depois `Row`) em vez de um card: a `Row` tem que ser **filha** da `Column`.
+- O `modifier` recebido vai **só na raiz**. Os filhos começam com `Modifier` (maiúsculo).
+- Itens repetidos (3 chips iguais) → extrair um composable (`private fun Chip(texto: String, modifier: Modifier = Modifier)`), como extrair um componente no React.
+- O conteúdo do `Box` vai na lambda final (≈ `children`). O centro vem de `contentAlignment = Alignment.Center`, nos parênteses.
+
+- `@Preview(showBackground = true)` pinta um fundo branco **só na preview** (sem ele o fundo é transparente e mostra a cor do Studio). Cor própria: `backgroundColor = 0xFFEEEEEE` (ARGB). Diferente de `Modifier.background(cor)`, que pinta o componente no app de verdade.
+- Gap na `Row` = `horizontalArrangement = Arrangement.spacedBy(8.dp)`. Um `Row(Modifier.padding(8.dp))` só cria espaço **em volta** da Row, e os filhos continuam colados.
+- Argumentos posicionais funcionam (`Box(mod, Alignment.Center)`), mas o padrão é **nomeado** (`contentAlignment = Alignment.Center`): fica legível e não quebra se a ordem mudar.
+
+> 📝 Caderno
+> { } = só filhos · Modifier = parâmetro (solto nas chaves é descartado)
+> modifier recebido → só na raiz · filhos → Modifier novo
+> repetiu 3x → extrai composable
+
 #### Git em projeto Android: o que versionar e o que ignorar (2026-10-05)
 
 **Regra-mãe:** versione o que outra pessoa (ou o CI) precisa para **reconstruir o projeto do zero** e que é **igual para todo mundo**. Ignore três tipos de coisa: o que é **gerado** (dá para recriar com um build), o que é **pessoal da sua máquina** (caminhos, janelas abertas, aparelho escolhido) e o que é **segredo** (senha, keystore, chave de API).
@@ -1565,7 +1655,9 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 O repo é um **monorepo de projetos independentes**: a raiz não tem `settings.gradle.kts` nem `gradlew`. Cada projeto (`TemperatureConverter/`, depois `GuessingGame/`) tem o seu wrapper e o seu `settings.gradle.kts`. O Gradle procura o `settings.gradle.kts` a partir da pasta onde roda, então:
 
 - **Terminal:** `cd TemperatureConverter && ./gradlew assembleDebug`. Da raiz também dá, sem entrar na pasta: `TemperatureConverter/gradlew -p TemperatureConverter assembleDebug` (`-p` = pasta do projeto).
-- **Android Studio:** abrir a pasta `TemperatureConverter/`, não a raiz. Aberta na raiz, o Studio não acha um projeto Gradle e não oferece Run/Sync.
+- **Android Studio:** abrir a pasta `TemperatureConverter/`, não a raiz. Aberta na raiz, o Studio não acha um projeto Gradle: sem Sync não tem Run, autocomplete nem cor de sintaxe no Kotlin (o código vira texto). Sintoma visto em 2026-10-05: uma `.idea/` nova apareceu na raiz, criada ao abrir a raiz. Correção: File → Close Project → Open → escolher a pasta `TemperatureConverter/` → Trust → esperar o Sync terminar.
+- **Painel de arquivos só mostra `app` e `Gradle Scripts`?** É a visão **Android** (lógica e filtrada, esconde `build/`, `gradlew`, `.gitignore`...). Seletor no topo do painel → **Project** mostra as pastas reais do disco. Só muda o desenho da árvore: Sync/Gradle continuam iguais (2026-10-05).
+- **Pasta "sumida" (`ui.theme` numa linha só):** é o **Compact Middle Packages**, que junta pastas que têm um filho só. A opção fica em `⋮` do painel → Appearance e vale **por visão** (Android e Project têm cada uma a sua). Para mover um arquivo de pacote sem ver a pasta: editar a linha `package` → `Alt+Enter` → "Move file to ..." (o Studio move para a pasta que bate com o package) (2026-10-05).
 - **Sessão do Claude:** continua na raiz (é onde ficam `docs/` e `CLAUDE.md`). Abrir o Claude e rodar o build são coisas separadas.
 - **Git é diferente:** roda de qualquer pasta do repo (sobe até achar o `.git`). Só o caminho passado no comando é relativo a onde você está (`TemperatureConverter/.idea` na raiz = `.idea` dentro do projeto).
 

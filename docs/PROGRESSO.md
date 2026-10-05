@@ -100,12 +100,13 @@ Estrutura: Teoria fundamentada + Exercícios práticos + Aplicações em projeto
      │         rememberSaveable a fundo (§5.1) + 8 perguntas corrigidas (2026-09-30)
      ├─ 🔄 Projeto 1: Temperature Converter (`TemperatureConverter/` neste repo)
      │    ├─ ✅ Etapa 1: criar projeto (Empty Activity/Compose), build debug OK (2026-09-30)
-     │    ├─ 🔄 Etapa 2: tour pelo template (MainActivity, setContent, Theme, Greeting,
-     │    │         @Preview, Gradle Fase 0) — teoria dada 2026-09-30 (TEORIA.md §6,
-     │    │         "Projeto 1") + aprofundamento 2026-10-02 (pastas, Manifest, MainActivity
-     │    │         linha a linha, Modifier a fundo); falta a checagem   👈 VOCÊ ESTÁ AQUI
-     │    └─ ⬜ Etapa 3: mini-teoria (Modifier, Column/Row, TextField numérico,
-     │              toDoubleOrNull) → enunciado (rememberSaveable + state hoisting, sem ViewModel)
+     │    ├─ ✅ Etapa 2: tour pelo template (MainActivity, setContent, Theme, Greeting,
+     │    │         @Preview, Gradle Fase 0) — teoria 2026-09-30 + aprofundamento 2026-10-02
+     │    │         + revisão completa 2026-10-05; checagem PULADA a pedido (ver PENDÊNCIAS)
+     │    └─ 🔄 Etapa 3: ✅ 3.1 ordem do Modifier + Column/Row/Box (teoria e
+     │              LayoutPlayground.kt concluído 2026-10-05)
+     │              → 3.2 TextField numérico + toDoubleOrNull   👈 VOCÊ ESTÁ AQUI
+     │              → 3.3 enunciado do conversor (rememberSaveable + state hoisting, sem ViewModel)
      └─ 9 projetos curados (Temperature Converter → To-Do Notes,
         ver lista completa abaixo), nível crescente
      │
@@ -281,8 +282,9 @@ Código roda em Kotlin local (IntelliJ). Exercícios começam com TODOs, você p
 - [ ] `rememberUpdatedState`: evitar valor "velho" dentro de um efeito longo
 
 **Estrutura e UI:**
-- [ ] `Modifier`: introduzido em 2026-09-30; a fundo em 2026-10-02 (lista ordenada e imutável, 3 famílias, tipo vs valor em `Modifier = Modifier`, usar o `modifier` recebido no raiz). **Falta: praticar a ordem** (padding antes/depois de background, Etapa 3)
-- [ ] Layouts: `Column`/`Row`/`Box`, `LazyColumn` + `key` (só `Column`, `Text` e `Button` apresentados de leve no Nível 1)
+- [ ] Checagem da Etapa 2 (8 perguntas na TEORIA.md §6): pulada em 2026-10-05 a pedido, depois de uma revisão completa. Retomar quando o usuário quiser
+- [ ] `Modifier`: introduzido em 2026-09-30; a fundo em 2026-10-02 (lista ordenada e imutável, 3 famílias, tipo vs valor em `Modifier = Modifier`, usar o `modifier` recebido no raiz). Ordem praticada em 2026-10-05 (3.1: margem = padding antes do background, borda+margem+fundo+padding numa cadeia) ✅
+- [ ] Layouts: `Column`/`Row`/`Box`/`Spacer` + `Arrangement`/`Alignment` ensinados e praticados em 2026-10-05 (Etapa 3.1, `LayoutPlayground.kt` ✅); falta `LazyColumn` + `key`
 - [ ] Material 3, tema e `Scaffold` (apresentados no tour da Etapa 2, 2026-09-30: `Scaffold` + `innerPadding`, `MaterialTheme.colorScheme`; slots da topBar etc. ainda não praticados)
 - [ ] Navigation Compose (rotas, argumentos, ViewModel por tela). Obs.: é assim, e não com `rememberSaveable`, que um dado vai pra outra tela
 - [x] Estrutura do projeto Android: `MainActivity`, `setContent`, tema, `build.gradle.kts` do app (teoria 2026-09-30, Etapa 2 do Temperature Converter)
@@ -295,6 +297,12 @@ Código roda em Kotlin local (IntelliJ). Exercícios começam com TODOs, você p
 ## LOG DE PROGRESSO
 
 > Cada entrada nova vai no topo, com data.
+
+- **2026-10-05** — **Exercício 3.1 concluído pelo próprio usuário** (depois de reverter a solução aplicada pelo Claude). Com dicas: espaço sem cor = `padding` e não `border`; padding da Column no `modifier` (continuando a cadeia do recebido); gap da Row = `spacedBy`, não `padding`; `contentAlignment`; `showBackground = true` explicado (só preview × `Modifier.background`). Compila. Ficaram ajustes de estilo: argumentos posicionais (`Column(modifier, Arrangement...)`, `Box(..., Alignment.Center)`) em vez de nomeados, comentário entre a anotação e o `fun`, imports sem uso, `Theme() { }` com parênteses vazios, chips repetidos (extrair `Chip` opcional). Próximo: **3.2** (TextField numérico + `toDoubleOrNull`).
+
+- **2026-10-05** — Sessão reaberta sem querer: teoria da Etapa 3.1 e enunciado do `LayoutPlayground.kt` repassados. Dúvida rápida: painel mostrando só `app`/`Gradle Scripts` = visão **Android**; trocar para **Project** no seletor do topo (não afeta o Gradle). Registrado na TEORIA.md §6 (bloco do monorepo). Arquivo criado em `ui/theme/` por engano; movido para `ui/` editando o `package` + `Alt+Enter` (o F6 travou no campo de package). Explicado o Compact Middle Packages (por visão). **1ª correção do 3.1:** A ✅; B com previsão certa (confundiu fundo com cor do texto), mas misturou a parte 2 dentro dela (e usou `border(8.dp, Yellow)` como espaço, que deveria ser sem cor). CardPlayList: ❌ `modifier.padding()` como instrução dentro das chaves (Modifier imutável, valor descartado: chaves = só filhos); ❌ `Row` fora da `Column` + `modifier` repassado para os filhos; faltou `= Modifier`, `spacedBy` na Row, `contentAlignment`, preview; `;` de novo. Dicas dadas: conteúdo do Box via lambda final (≈ children), gap da Row. Usuário pediu a correção: **solução completa entregue** (código pra ele colar, regra 8), com `Chip` extraído como `private` composable reutilizável. **Reforçar:** chaves `{ }` = só filhos, Modifier = parâmetro; `modifier` só na raiz. Sugerido refazer a parte 3 sem olhar. **Exceção pontual à regra 8:** o usuário autorizou o Claude a aplicar a solução no `LayoutPlayground.kt` só desta vez; `compileDebugKotlin` passou. Logo depois o usuário **reverteu para a versão dele** e preferiu receber só os comentários corretos, para corrigir sozinho. Próximo: refazer a parte 3 → 3.2 (TextField numérico + `toDoubleOrNull`).
+
+- **2026-10-05** — **Revisão completa da Etapa 2** a pedido (fluxo ícone → Manifest → Activity → setContent → tema → Scaffold → Greeting/Modifier → Preview → Gradle; acrescentada a tabela min/compile/targetSdk, com "compileSdk sobe sem medo, targetSdk muda comportamento"). Usuário **pulou a checagem** e pediu prática → Etapa 2 ✅, checagem nas PENDÊNCIAS. **Etapa 3 iniciada:** parte 1 da mini-teoria (ordem do Modifier de fora pra dentro, "Compose não tem margin", `Column`/`Row`/`Box`/`Spacer`, `Arrangement` vs `Alignment` ≈ justifyContent/alignItems, `spacedBy` ≈ gap) na TEORIA.md §6 e **Exercício 3.1** (`LayoutPlayground.kt`: previsão A/B, margem+padding numa cadeia, `CardPlaylist`). Próximo: corrigir o 3.1 → 3.2 (TextField numérico + `toDoubleOrNull`).
 
 - **2026-10-05** — **Git em projeto Android: o que versionar/ignorar** (pedido: "me relembrar quais arquivos ignorar"). Registrado na TEORIA.md §6, depois da Etapa 2: regra-mãe (gerado/pessoal/segredo), tabelas versionar vs ignorar, `gradle-wrapper.jar` vai pro git, as duas escolhas para a `.idea/`, pegadinhas (`.gitignore` não desversiona → `git rm -r --cached`; `/x` é relativo à pasta do `.gitignore`), `git check-ignore -v`, `restore --staged` vs `restore`. **Praticado pelo usuário:** pôs `/.idea` no `.gitignore` do projeto (não alcançava a `.idea` da raiz), depois `.idea/` no do projeto; achou o `.gitignore` da raiz (oculto no Finder, invisível no Studio) e fechou com uma regra `.idea/` lá + `git rm -r --cached TemperatureConverter/.idea` (commit `24cdcde`). Decidiu deixar o **`CLAUDE.md` só local**: `.gitignore` + `git rm --cached` (commit `b23c940`, push feito; a versão antiga segue no histórico do 1º commit). No caminho, um `git restore` sem `--staged` descartou as atualizações dos docs, refeitas pelo Claude. Dúvidas respondidas: o `./gradlew` roda dentro de `TemperatureConverter/` (ou com `-p`); git roda de qualquer pasta do repo. **Nova regra de tutoria 8:** o usuário faz tudo nos projetos, o Claude só ensina (e mantém os docs). Próximo: checagem da Etapa 2 → Etapa 3.
 
