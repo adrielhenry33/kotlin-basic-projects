@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+
+# Gradle / build (vale para todos os projetos Android)
+.gradle/
+build/
+.kotlin/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Android Studio / IntelliJ
+*.iml
+**/.idea/caches/
+**/.idea/libraries/
+**/.idea/modules.xml
+**/.idea/workspace.xml
+**/.idea/navEditor.xml
+**/.idea/assetWizardSettings.xml
+**/.idea/deviceManager.xml
+**/.idea/deploymentTargetSelector.xml
+
+# Claude Code (configuração local da máquina)
+.claude/settings.local.json
