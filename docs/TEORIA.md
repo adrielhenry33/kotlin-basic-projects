@@ -1487,6 +1487,94 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 > modifier: Modifier = Modifier → tipo = valor vazio
 > Dentro do componente: modifier (minúsculo) no raiz, nunca Modifier novo
 
+#### Git em projeto Android: o que versionar e o que ignorar (2026-10-05)
+
+**Regra-mãe:** versione o que outra pessoa (ou o CI) precisa para **reconstruir o projeto do zero** e que é **igual para todo mundo**. Ignore três tipos de coisa: o que é **gerado** (dá para recriar com um build), o que é **pessoal da sua máquina** (caminhos, janelas abertas, aparelho escolhido) e o que é **segredo** (senha, keystore, chave de API).
+
+**Ponte com JS/React Native:**
+
+| JS / RN | Android | Git |
+|---|---|---|
+| `dist/`, `.expo/` | `build/` (em cada módulo) | ignora |
+| `node_modules/` (cache baixado) | `.gradle/`, `.kotlin/` | ignora |
+| `.env.local` | `local.properties` | ignora |
+| `package.json` | `build.gradle.kts` + `libs.versions.toml` | versiona |
+| versão do yarn/pnpm travada no repo | `gradlew` + `gradle/wrapper/*` | versiona |
+| `.vscode/settings.json` pessoal | `.idea/workspace.xml` | ignora |
+
+**Versionar ✅**
+
+| Arquivo/pasta | Por quê |
+|---|---|
+| `app/src/**` | o código e os recursos do app |
+| `settings.gradle.kts`, `build.gradle.kts` (raiz e `app/`) | definem o build |
+| `gradle/libs.versions.toml` | versões das dependências |
+| `gradle.properties` | flags do build iguais para todos (sem segredo) |
+| `gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar` e `.properties` | o wrapper. **Sim, o `.jar` vai pro git:** sem ele o `./gradlew` não roda no CI nem no clone de outra pessoa |
+| `app/proguard-rules.pro` / regras do R8 | configuram o build de release |
+| os `.gitignore` (todos) | as regras valem para todo mundo |
+
+**Ignorar ❌**
+
+| Arquivo/pasta | Por quê |
+|---|---|
+| `build/`, `.gradle/`, `.kotlin/`, `captures/`, `.cxx/`, `.externalNativeBuild/` | gerados pelo build, recriados a qualquer hora |
+| `local.properties` | `sdk.dir` aponta para o SDK **da sua máquina**. Também é o lugar padrão para guardar chave/senha local |
+| `*.iml` | arquivo de módulo que o Studio regera a partir do Gradle |
+| `.idea/workspace.xml`, `caches/`, `libraries/`, `modules.xml`, `deploymentTargetSelector.xml`, `deviceManager.xml`, `shelf/` | estado pessoal do IDE (abas abertas, celular selecionado) |
+| `*.jks`, `*.keystore`, senhas de assinatura | segredo. Vai para cofre/secrets do CI, nunca para o git |
+| `.DS_Store` | lixo do macOS |
+
+**A pasta `.idea/`: duas escolhas aceitas no mercado**
+- **(A) Padrão do template do Google:** ignora só o pessoal (lista acima) e versiona o compartilhável: `codeStyles/`, `inspectionProfiles/`, `runConfigurations.xml`. Faz sentido em time, para todo mundo formatar igual.
+- **(B) Ignorar a pasta inteira (`/.idea`):** mais simples, comum em projeto solo ou quando o estilo é garantido por ktlint/detekt no CI. O Studio recria a pasta sozinho ao abrir o projeto.
+- O que **não** pode é ficar no meio do caminho: a regra dizer "ignora" e os arquivos continuarem rastreados (pegadinha 1).
+
+**Pegadinhas:**
+1. **`.gitignore` não desversiona.** Ele só vale para arquivo **ainda não rastreado**. Se o arquivo já foi commitado, é preciso tirar do índice sem apagar do disco: `git rm -r --cached <caminho>` e depois commit.
+2. **O caminho é relativo à pasta do `.gitignore`.** `/.idea` dentro de `TemperatureConverter/.gitignore` pega só `TemperatureConverter/.idea`, e não a `.idea` da raiz do repo. Sem a `/` inicial (`.idea/`), a regra pega a pasta em qualquer nível abaixo. Barra no fim (`build/`) = só pasta.
+3. **Os `.gitignore` se somam.** Raiz, projeto, `app/` e o `.idea/.gitignore` que o Studio cria valem juntos, cada um para a sua pasta.
+4. **Segredo commitado continua no histórico.** Ignorar depois não resolve: a chave tem que ser trocada.
+5. **`!padrao` reinclui**, mas não funciona se a pasta-mãe inteira foi ignorada (o git nem entra nela).
+
+**Como ficou neste repo (2026-10-05):** uma regra só, `.idea/`, no `.gitignore` da **raiz**. Sem `/` no começo, ela pega a `.idea` da raiz e a de todos os projetos (inclusive os próximos). Os arquivos da `TemperatureConverter/.idea` que já estavam commitados saíram com `git rm -r --cached`. O `CLAUDE.md` também foi para o `.gitignore` (instruções só locais).
+
+**Desfazer coisas no stage:**
+- `git restore --staged <arquivo>`: desfaz o `git add`. A alteração continua no disco. **Seguro.**
+- `git restore <arquivo>` (sem `--staged`): **descarta a alteração do disco** e volta para a versão do último commit. Não tem como recuperar.
+- No `git status --short`, a 1ª coluna é o stage (vai no commit) e a 2ª é o que está só no disco: `M ` = pronto para commitar, ` M` = mudou mas não foi adicionado.
+
+**Ferramentas de conferência:**
+- `git status --ignored`: mostra também o que está sendo ignorado.
+- `git check-ignore -v <caminho>`: diz **qual arquivo e qual linha** ignorou aquele caminho.
+- `git ls-files <pasta>`: lista o que está rastreado (para achar arquivo que devia estar ignorado e já foi commitado).
+
+> 📝 Caderno
+> Versiona: reconstruir do zero + igual pra todos
+> Ignora: gerado (build/, .gradle/) · pessoal (local.properties, workspace.xml) · segredo (*.jks)
+> gradle-wrapper.jar VAI pro git · local.properties NÃO
+> .idea: ignora só o pessoal (template) OU a pasta toda. Escolher um
+> .gitignore não desversiona → git rm -r --cached <caminho>
+> /x = relativo à pasta do .gitignore · x/ = qualquer nível, só pasta
+> git check-ignore -v <caminho> = quem ignorou
+> git restore --staged x = desfaz o add (seguro) · git restore x = DESCARTA a alteração
+> status --short: 1ª coluna = stage (vai no commit) · 2ª = só no disco
+
+#### Onde rodar o `./gradlew` neste repo (2026-10-05)
+
+O repo é um **monorepo de projetos independentes**: a raiz não tem `settings.gradle.kts` nem `gradlew`. Cada projeto (`TemperatureConverter/`, depois `GuessingGame/`) tem o seu wrapper e o seu `settings.gradle.kts`. O Gradle procura o `settings.gradle.kts` a partir da pasta onde roda, então:
+
+- **Terminal:** `cd TemperatureConverter && ./gradlew assembleDebug`. Da raiz também dá, sem entrar na pasta: `TemperatureConverter/gradlew -p TemperatureConverter assembleDebug` (`-p` = pasta do projeto).
+- **Android Studio:** abrir a pasta `TemperatureConverter/`, não a raiz. Aberta na raiz, o Studio não acha um projeto Gradle e não oferece Run/Sync.
+- **Sessão do Claude:** continua na raiz (é onde ficam `docs/` e `CLAUDE.md`). Abrir o Claude e rodar o build são coisas separadas.
+- **Git é diferente:** roda de qualquer pasta do repo (sobe até achar o `.git`). Só o caminho passado no comando é relativo a onde você está (`TemperatureConverter/.idea` na raiz = `.idea` dentro do projeto).
+
+> 📝 Caderno
+> Raiz do repo = docs + CLAUDE.md (sem Gradle)
+> Build: cd <Projeto> && ./gradlew assembleDebug  (ou -p <Projeto>)
+> Studio abre a pasta do projeto · Claude abre na raiz
+> git roda de qualquer pasta do repo, caminho relativo a onde você está
+
 
 **Objetivo combinado em 2026-09-21:** ao chegar em Compose e começar a fazer projetos, criar entre 5 e 10 projetos básicos pra treinar Kotlin/Compose na prática, com nível crescente a cada um — treino solto, separado dos projetos reais de Nível 4 (GodiTrack/Orchestror).
 

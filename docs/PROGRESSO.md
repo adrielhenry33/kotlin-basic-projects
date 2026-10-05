@@ -6,7 +6,7 @@
 
 ## COMO RETOMAR EM OUTRA SESSÃO
 
-> **Atualizado em 2026-10-05.** Tudo fica num repo só: `/Users/macbook/AndroidStudioProjects/kotlin-basic-projects` (GitHub `adrielhenry33/kotlin-basic-projects`). Os docs ficam em `docs/` e cada projeto Android numa pasta irmã (`TemperatureConverter/`, depois `GuessingGame/` etc.). **Jeito de trabalhar:** abrir a sessão do Claude na **raiz do repo** (`cd ~/AndroidStudioProjects/kotlin-basic-projects && claude`). O `CLAUDE.md` da raiz carrega as regras sozinho, sem precisar colar prompt. No Android Studio, abrir **a pasta do projeto** (ex.: `TemperatureConverter/`), não a raiz. Os exercícios de Kotlin puro (console) continuam no repo separado `~/IdeaProjects/kotlin-estudos`. *Histórico: até 2026-10-04 estes docs ficavam no `kotlin-estudos`, e os projetos Android ficavam soltos em `~/AndroidStudioProjects`.*
+> **Atualizado em 2026-10-05.** Tudo fica num repo só: `/Users/macbook/AndroidStudioProjects/kotlin-basic-projects` (GitHub `adrielhenry33/kotlin-basic-projects`). Os docs ficam em `docs/` e cada projeto Android numa pasta irmã (`TemperatureConverter/`, depois `GuessingGame/` etc.). **Jeito de trabalhar:** abrir a sessão do Claude na **raiz do repo** (`cd ~/AndroidStudioProjects/kotlin-basic-projects && claude`). O `CLAUDE.md` da raiz carrega as regras sozinho, sem precisar colar prompt. **Ele fica só local, fora do git (decisão de 2026-10-05):** num clone novo ele não vem, e é preciso recriá-lo a partir das regras de tutoria abaixo. No Android Studio, abrir **a pasta do projeto** (ex.: `TemperatureConverter/`), não a raiz. Os exercícios de Kotlin puro (console) continuam no repo separado `~/IdeaProjects/kotlin-estudos`. *Histórico: até 2026-10-04 estes docs ficavam no `kotlin-estudos`, e os projetos Android ficavam soltos em `~/AndroidStudioProjects`.*
 
 **Arquivos:**
 - Progresso (estado): `docs/PROGRESSO.md`
@@ -21,6 +21,7 @@
 5. **Caderno:** o usuário anota à mão. Teoria com blocos `> 📝 Caderno` curtos, tabelas e diagramas ASCII copiáveis.
 6. **Sincronizar a cada progresso:** atualizar `PROGRESSO.md` (roadmap + LOG no topo) e `TEORIA.md`, e regerar o PDF.
 7. Responder em português, tom franco e técnico; dúvida = scaffold (dica 1 → 2 → 3 → solução só se pedir).
+8. **O usuário faz tudo nos projetos (pedido em 2026-10-05).** O Claude **não edita** arquivo de projeto (código, Gradle, `.gitignore`, config do Studio), não roda comando que mude o projeto nem faz commit por ele: só ensina e explica o que fazer. A exceção são os docs da trilha (`docs/PROGRESSO.md`, `docs/TEORIA.md`, o PDF e o `CLAUDE.md`), que o Claude mantém atualizados.
 
 ---
 
@@ -294,6 +295,8 @@ Código roda em Kotlin local (IntelliJ). Exercícios começam com TODOs, você p
 ## LOG DE PROGRESSO
 
 > Cada entrada nova vai no topo, com data.
+
+- **2026-10-05** — **Git em projeto Android: o que versionar/ignorar** (pedido: "me relembrar quais arquivos ignorar"). Registrado na TEORIA.md §6, depois da Etapa 2: regra-mãe (gerado/pessoal/segredo), tabelas versionar vs ignorar, `gradle-wrapper.jar` vai pro git, as duas escolhas para a `.idea/`, pegadinhas (`.gitignore` não desversiona → `git rm -r --cached`; `/x` é relativo à pasta do `.gitignore`), `git check-ignore -v`, `restore --staged` vs `restore`. **Praticado pelo usuário:** pôs `/.idea` no `.gitignore` do projeto (não alcançava a `.idea` da raiz), depois `.idea/` no do projeto; achou o `.gitignore` da raiz (oculto no Finder, invisível no Studio) e fechou com uma regra `.idea/` lá + `git rm -r --cached TemperatureConverter/.idea` (commit `24cdcde`). Decidiu deixar o **`CLAUDE.md` só local**: `.gitignore` + `git rm --cached` (commit `b23c940`, push feito; a versão antiga segue no histórico do 1º commit). No caminho, um `git restore` sem `--staged` descartou as atualizações dos docs, refeitas pelo Claude. Dúvidas respondidas: o `./gradlew` roda dentro de `TemperatureConverter/` (ou com `-p`); git roda de qualquer pasta do repo. **Nova regra de tutoria 8:** o usuário faz tudo nos projetos, o Claude só ensina (e mantém os docs). Próximo: checagem da Etapa 2 → Etapa 3.
 
 - **2026-10-05** — **Reorganização: repo único `kotlin-basic-projects`** (`~/AndroidStudioProjects/kotlin-basic-projects`, GitHub `adrielhenry33/kotlin-basic-projects`). `PROGRESSO.md`, `TEORIA.md` e o gerador do PDF **movidos** do `kotlin-estudos` para `docs/` (lá ficou só um aviso apontando pra cá). `TemperatureConverter/` entrou como subpasta, e os próximos projetos vêm como pastas irmãs. `CLAUDE.md` na raiz carrega as regras automaticamente. O `kotlin-estudos` continua sendo o repo dos exercícios de console.
 
