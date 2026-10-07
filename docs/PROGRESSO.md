@@ -104,8 +104,10 @@ Estrutura: Teoria fundamentada + Exercícios práticos + Aplicações em projeto
      │    │         @Preview, Gradle Fase 0) — teoria 2026-09-30 + aprofundamento 2026-10-02
      │    │         + revisão completa 2026-10-05; checagem PULADA a pedido (ver PENDÊNCIAS)
      │    └─ 🔄 Etapa 3: ✅ 3.1 ordem do Modifier + Column/Row/Box (teoria e
-     │              LayoutPlayground.kt concluído 2026-10-05)
-     │              → 3.2 TextField numérico + toDoubleOrNull   👈 VOCÊ ESTÁ AQUI
+     │              LayoutPlayground.kt concluído 2026-10-05; 3.1b CardPlayList
+     │              reutilizável 2026-10-07, ajustes de estilo pendentes)
+     │              → 3.2 TextField numérico + toDoubleOrNull (teoria ✅ 2026-10-07,
+     │                exercício CampoDecimal.kt / gorjeta)   👈 VOCÊ ESTÁ AQUI
      │              → 3.3 enunciado do conversor (rememberSaveable + state hoisting, sem ViewModel)
      └─ 9 projetos curados (Temperature Converter → To-Do Notes,
         ver lista completa abaixo), nível crescente
@@ -285,6 +287,7 @@ Código roda em Kotlin local (IntelliJ). Exercícios começam com TODOs, você p
 - [ ] Checagem da Etapa 2 (8 perguntas na TEORIA.md §6): pulada em 2026-10-05 a pedido, depois de uma revisão completa. Retomar quando o usuário quiser
 - [ ] `Modifier`: introduzido em 2026-09-30; a fundo em 2026-10-02 (lista ordenada e imutável, 3 famílias, tipo vs valor em `Modifier = Modifier`, usar o `modifier` recebido no raiz). Ordem praticada em 2026-10-05 (3.1: margem = padding antes do background, borda+margem+fundo+padding numa cadeia) ✅
 - [ ] Layouts: `Column`/`Row`/`Box`/`Spacer` + `Arrangement`/`Alignment` ensinados e praticados em 2026-10-05 (Etapa 3.1, `LayoutPlayground.kt` ✅); falta `LazyColumn` + `key`
+- [ ] Recursos de texto: `strings.xml`, `stringResource`, plurais com `pluralStringResource` (citado em 2026-10-07 no bônus do 3.1b; hoje os textos ficam fixos no código)
 - [ ] Material 3, tema e `Scaffold` (apresentados no tour da Etapa 2, 2026-09-30: `Scaffold` + `innerPadding`, `MaterialTheme.colorScheme`; slots da topBar etc. ainda não praticados)
 - [ ] Navigation Compose (rotas, argumentos, ViewModel por tela). Obs.: é assim, e não com `rememberSaveable`, que um dado vai pra outra tela
 - [x] Estrutura do projeto Android: `MainActivity`, `setContent`, tema, `build.gradle.kts` do app (teoria 2026-09-30, Etapa 2 do Temperature Converter)
@@ -297,6 +300,10 @@ Código roda em Kotlin local (IntelliJ). Exercícios começam com TODOs, você p
 ## LOG DE PROGRESSO
 
 > Cada entrada nova vai no topo, com data.
+
+- **2026-10-07**: **Exercício 3.1b** (`CardPlayList(titulo, quantidade, chips, modifier)` reutilizável; enunciado em 2026-10-06 depois de explicar: cada layout posiciona só os filhos diretos, margem externa é do pai, `Modifier` × `modifier`, o pai estiliza o lado de fora e os parâmetros mudam o conteúdo, `for` dentro de composable ≈ `.map` do JSX). Dúvida: o item 2 não era laço sobre `quantidade`, era só string template. **1ª correção:** ❌ `modifier` recebido não usado na `Column` (borda e `fillMaxWidth` do preview ignorados); ❌ `for` dentro do `Box` (3 textos sobrepostos num chip só; o `for` tem que envolver o chip); ❌ subtítulo sem "músicas"; ⚠️ `modifier` como 1º parâmetro (deve ser o 1º opcional, depois dos obrigatórios); `quantididade` (typo, `⇧F6`), `;` de novo, `mutableListOf` → `listOf`, `Row` posicional, imports sem uso. Respondido: por que `Chip` é `private` (detalhe interno; promover a público no 2º uso). Bônus (singular/plural com `if` expressão) explicado só com dica; `pluralStringResource` adicionado às PENDÊNCIAS. Registrado na TEORIA §6. Corrigido pelo usuário: `modifier = modifier` na raiz (explicado lado quem chama × quem recebe; não é `it`/`this`, o parâmetro já é variável) e `for` envolvendo o `Box` ✅. Ficaram pro usuário: subtítulo com "músicas" + bônus do plural, ordem dos parâmetros, typo, `;`, `listOf`, imports, e o 1º card com `fillMaxSize()` (deveria ser `fillMaxWidth()`). **3.2 iniciada:** teoria na TEORIA §6 (TextField controlado ≈ input do React, slots `label`/`supportingText`, `KeyboardType.Decimal` não valida, `toDouble` × `toDoubleOrNull`, vírgula com `replace`, estado = texto e número = `val` derivada, modo interativo do preview) + **Exercício 3.2** (`CampoDecimal.kt`: campo stateless + `TelaGorjeta` stateful).
+
+- **2026-10-06**: Extras da 3.1 no `LayoutPlayground.kt`. Formatação: `⌥⌘L` + Code Style Kotlin (hard wrap 100, "Ensure right margin is not exceeded", chop if long, trailing comma). O diff era só de formatação, então a tela não mudou. Explicado como ver o resultado: Split/Build & Refresh, ▶️ do preview no emulador, ou trocar a chamada no `setContent`. Novo `PlotarTextos` (Column centralizada). Com dicas 1→3: dois composables soltos dentro do tema ficavam sobrepostos (o tema não é layout) → envolver numa `Column`; diferença entre `Spacer` (folha) e layout (pai); modifier = "como eu sou" × Arrangement/Alignment = "como organizo meus filhos"; `fillMaxSize` para centralizar na vertical + `showSystemUi`; `spacedBy(x, Alignment.CenterVertically)` = gap + centro (registrado na TEORIA §6). Próximo continua: **3.2**.
 
 - **2026-10-05** — **Exercício 3.1 concluído pelo próprio usuário** (depois de reverter a solução aplicada pelo Claude). Com dicas: espaço sem cor = `padding` e não `border`; padding da Column no `modifier` (continuando a cadeia do recebido); gap da Row = `spacedBy`, não `padding`; `contentAlignment`; `showBackground = true` explicado (só preview × `Modifier.background`). Compila. Ficaram ajustes de estilo: argumentos posicionais (`Column(modifier, Arrangement...)`, `Box(..., Alignment.Center)`) em vez de nomeados, comentário entre a anotação e o `fun`, imports sem uso, `Theme() { }` com parênteses vazios, chips repetidos (extrair `Chip` opcional). Próximo: **3.2** (TextField numérico + `toDoubleOrNull`).
 

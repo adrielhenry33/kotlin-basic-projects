@@ -1538,6 +1538,10 @@ Dois parâmetros controlam a posição dos filhos:
 | `Box` | — | `contentAlignment = Alignment.Center` |
 
 - `Arrangement.spacedBy(8.dp)` ≈ `gap: 8px`. Padrão de mercado no lugar de um `Spacer` entre cada filho.
+- **Gap + centralizar juntos (2026-10-06):** `spacedBy` aceita um alinhamento como 2º argumento. Na `Column`: `verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically)` (16dp entre cada filho **e** o grupo no meio). Na `Row`: `spacedBy(8.dp, Alignment.CenterHorizontally)`. Substitui o `Arrangement.Center` sem precisar de `Spacer`.
+- **`Spacer` só pra espaço desigual:** quando um ponto específico precisa de um espaço diferente dos outros (ex.: 8dp entre título e subtítulo, 32dp antes do botão).
+- **Layout pai é obrigatório (2026-10-06):** dois composables soltos dentro do tema (ou de qualquer coisa que não seja layout) são desenhados no mesmo ponto, sobrepostos. O tema só fornece cores/tipografia, não posiciona. Solução: envolver numa `Column`/`Row`. `Spacer` não resolve: é uma folha, também precisa de pai.
+- **Modifier vs parâmetros:** `modifier` = como **eu** sou (tamanho → espaço → aparência; se nada, não passa). `Arrangement`/`Alignment` = como organizo **meus filhos**. Centralizar na vertical exige altura sobrando (`fillMaxSize()`); no preview, `showSystemUi = true` simula a tela do celular.
 - Pegadinha do nome: na `Column` o eixo principal é vertical, então é `verticalArrangement` + `horizontalAlignment` (cruzado). Na `Row`, o inverso.
 - Imports: `androidx.compose.foundation.layout.*` (Column, Row, Box, Spacer, Arrangement, padding, size), `androidx.compose.foundation.background`, `androidx.compose.ui.Alignment`, `androidx.compose.ui.graphics.Color`, `androidx.compose.ui.unit.dp`. `Alt+Enter` resolve.
 - Cores fixas (`Color.Yellow`) só no playground. Em tela de verdade: `MaterialTheme.colorScheme.primaryContainer` etc., pra respeitar o tema claro/escuro.
@@ -1547,7 +1551,9 @@ Dois parâmetros controlam a posição dos filhos:
 > padding ANTES do background = margem · DEPOIS = padding interno · Compose não tem margin
 > Column = vertical · Row = horizontal · Box = um sobre o outro
 > Arrangement = eixo principal (justifyContent) · Alignment = eixo cruzado (alignItems)
-> spacedBy(8.dp) ≈ gap
+> spacedBy(8.dp) ≈ gap · spacedBy(8.dp, Alignment.CenterVertically) = gap + centro
+> Spacer = só pra espaço desigual · sem layout pai = tudo sobreposto
+> modifier = como EU sou · Arrangement/Alignment = como organizo MEUS FILHOS
 
 **Exercício 3.1: `LayoutPlayground.kt`** (arquivo novo em `ui/`, só previews; não mexer na `MainActivity`)
 
@@ -1566,6 +1572,90 @@ Dois parâmetros controlam a posição dos filhos:
 - Dois elementos soltos na raiz (`Column` e depois `Row`) em vez de um card: a `Row` tem que ser **filha** da `Column`.
 - O `modifier` recebido vai **só na raiz**. Os filhos começam com `Modifier` (maiúsculo).
 - Itens repetidos (3 chips iguais) → extrair um composable (`private fun Chip(texto: String, modifier: Modifier = Modifier)`), como extrair um componente no React.
+
+**3.1b: componente reutilizável (2026-10-06/07)**
+
+- **Cada layout posiciona só os filhos diretos.** O espaço *entre* irmãos é decisão do pai (`spacedBy`). O componente cuida só do espaço *interno* (`padding(16.dp)`); margem externa embutida no componente (`padding(top = 40.dp)`) briga com quem o reutiliza.
+- **`Modifier` × `modifier`:** `Modifier` = cadeia vazia (começa do zero; usado no topo/preview e nos filhos internos). `modifier` = cadeia de quem chamou (a raiz do componente continua ela: `modifier.padding(16.dp)`). Usar `Modifier` na raiz de quem recebe `modifier` = bug silencioso: o que o pai passa é ignorado.
+- **O pai estiliza o lado de fora (modifier); o conteúdo muda por parâmetros de dados** (`titulo`, `quantidade`, `chips`) ≈ props. Convenção: obrigatórios primeiro, `modifier: Modifier = Modifier` como **1º opcional**.
+- **Laço dentro de composable:** composable é função normal; `if`/`for`/`when` valem. Cada composable chamado no `for` vira um elemento (≈ `lista.map(item => <Chip/>)`). O `for` envolve **o que se repete** (o chip inteiro), não só o `Text`: `for` dentro do `Box` = vários textos sobrepostos num chip só. Pra lista longa/rolável: `LazyColumn` (pendente).
+- **`private` em composable:** peça interna (o `Chip` do card) começa `private`; só vira público quando surgir um 2º uso real. Kotlin é `public` por padrão (≈ não dar `export` no React).
+- **Plural:** `if` é expressão em Kotlin (≈ ternário). Em app real o texto vai pro `strings.xml` e o plural usa `pluralStringResource` (pendente).
+
+> 📝 Caderno
+> cada layout posiciona só os filhos diretos · espaço ENTRE irmãos = pai
+> Modifier = começa do zero · modifier = continua a cadeia de quem chamou · raiz usa modifier
+> modifier = pai estiliza o LADO DE FORA · parâmetros = pai muda o CONTEÚDO · modifier = 1º opcional
+> for no composable ≈ .map no JSX · o for envolve o que se repete
+> peça interna = private · promove a público no 2º uso
+
+#### Etapa 3.2: `TextField` numérico + `toDoubleOrNull` (teoria 2026-10-07)
+
+**1. `TextField` é um componente controlado.** Igual ao `<input value={x} onChange={...}>` do React: o campo **não guarda o texto**. Ele mostra o `value` que recebe e avisa pelo `onValueChange` o que o usuário quer digitar. Se ninguém atualizar o estado, você digita e nada aparece.
+
+```kotlin
+var texto by rememberSaveable { mutableStateOf("") }   // texto digitado → rememberSaveable
+
+OutlinedTextField(
+    value = texto,
+    onValueChange = { novo -> texto = novo },           // evento sobe, estado desce (UDF)
+    label = { Text("Valor da conta") },
+    singleLine = true,
+    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+)
+```
+
+| Parâmetro | O que faz | Ponte |
+|---|---|---|
+| `value` | o texto mostrado (sempre `String`) | `value` do input |
+| `onValueChange` | recebe o texto novo a cada tecla | `onChange` / `onChangeText` do RN |
+| `label` | **slot**: recebe um composable (`{ Text(...) }`), não uma `String` | render prop / `children` |
+| `singleLine` | uma linha só, Enter não quebra | `multiline={false}` |
+| `keyboardOptions` | qual teclado abre | `keyboardType="decimal-pad"` do RN |
+| `isError` | pinta o campo de vermelho | — |
+| `supportingText` | slot pra mensagem embaixo do campo (erro/ajuda) | — |
+
+`TextField` (preenchido) e `OutlinedTextField` (com contorno) têm a mesma API; muda só o visual do Material 3.
+
+**2. O teclado numérico não valida nada.** `KeyboardType.Decimal` só escolhe qual teclado aparece. O valor continua `String` e pode vir qualquer coisa: colar "abc", teclado físico, `-`, `.` sozinho, campo vazio. Em pt-BR a tecla decimal costuma ser **vírgula**.
+
+**3. `String` → número: `toDoubleOrNull()`.**
+
+| Entrada | `toDouble()` | `toDoubleOrNull()` |
+|---|---|---|
+| `"36.5"` | `36.5` | `36.5` |
+| `"36,5"` | 💥 `NumberFormatException` | `null` (Kotlin só entende ponto) |
+| `""` / `"-"` / `"abc"` | 💥 | `null` |
+
+`toDouble()` exigiria `try/catch` (tópico 1). Padrão de mercado: `toDoubleOrNull()` + tratar o `null`. Para aceitar vírgula: `texto.replace(',', '.').toDoubleOrNull()`.
+
+**4. Regra de ouro: o estado guarda o TEXTO, não o número.** Se o estado fosse `Double`, como representar "3." no meio da digitação, ou o campo vazio? O campo "brigaria" com o usuário (apaga o ponto, põe 0). Então: estado = `String`; o número é **derivado** a cada recomposição, numa `val` comum:
+
+```kotlin
+val valor: Double? = texto.replace(',', '.').toDoubleOrNull()   // recalcula a cada recomposição
+val erro = texto.isNotEmpty() && valor == null                  // vazio não é erro, é "ainda não digitou"
+```
+
+Ponte React: é o mesmo que calcular no corpo do componente em vez de criar outro `useState`. (O `derivedStateOf` ≈ `useMemo` existe, mas está nas PENDÊNCIAS e não é necessário pra uma conta barata dessas.)
+
+**5. Ver o campo funcionando no preview:** o preview comum é estático (não dá pra digitar). Use o **modo interativo** (ícone de "dedo"/Start Interactive Mode no painel do preview) ou o ▶️ do `@Preview` para rodar no emulador.
+
+Imports: `androidx.compose.material3.OutlinedTextField`, `androidx.compose.foundation.text.KeyboardOptions`, `androidx.compose.ui.text.input.KeyboardType`, `androidx.compose.runtime.saveable.rememberSaveable`, `androidx.compose.runtime.getValue`/`setValue` (pro `by`). `⌥↩` resolve.
+
+> 📝 Caderno
+> TextField = controlado (value + onValueChange) ≈ input do React
+> label/supportingText = slot → { Text(...) }, não String
+> KeyboardType.Decimal só troca o teclado, NÃO valida
+> toDouble() explode · toDoubleOrNull() devolve null · vírgula → replace(',', '.')
+> estado = TEXTO (String) · número = val derivada · vazio ≠ erro
+
+**Exercício 3.2: `CampoDecimal.kt`** (arquivo novo em `ui/`; cenário: gorjeta de restaurante, não é o conversor ainda)
+
+1. `CampoDecimal` **stateless**: recebe `valor: String`, `onValorChange: (String) -> Unit`, `rotulo: String` e `modifier` (na ordem certa). Dentro, um `OutlinedTextField` com teclado decimal, uma linha, o `rotulo` no slot `label`.
+2. Erro visual: se o texto não estiver vazio e não virar número, `isError = true` e uma mensagem "Valor inválido" no `supportingText`. Vírgula tem que ser aceita.
+3. `TelaGorjeta` **stateful** (dona do estado, `rememberSaveable`): usa o `CampoDecimal` e, embaixo, um `Text` com "Gorjeta (10%): X" quando o valor for válido, ou "Digite o valor da conta" quando não for.
+4. Preview da `TelaGorjeta` e teste no modo interativo: `""`, `"50"`, `"50,5"`, `"abc"`, `"-"`.
+5. **Pergunta pra responder num comentário:** por que o estado é `String` e não `Double`?
 - O conteúdo do `Box` vai na lambda final (≈ `children`). O centro vem de `contentAlignment = Alignment.Center`, nos parênteses.
 
 - `@Preview(showBackground = true)` pinta um fundo branco **só na preview** (sem ele o fundo é transparente e mostra a cor do Studio). Cor própria: `backgroundColor = 0xFFEEEEEE` (ARGB). Diferente de `Modifier.background(cor)`, que pinta o componente no app de verdade.
