@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -25,8 +27,12 @@ import com.adriel.temperatureconverter.ui.theme.TemperatureConverterTheme
 // A: background primeiro, então o fundo amarelo pinta tudo.
 // O padding vem depois e cria 16dp de respiro DENTRO da cor (≈ CSS
 //padding).
-fun TextA(){
-    Text("A", Modifier.background(Color.Yellow).padding(16.dp))
+fun TextA() {
+    Text(
+        "A", Modifier
+            .background(Color.Yellow)
+            .padding(16.dp)
+    )
 
 }
 
@@ -35,9 +41,13 @@ fun TextA(){
 // B: padding primeiro, então ficam 16dp de espaço SEM cor em volta (≈ CSS
 //margin).
 // O fundo amarelo só pinta dali pra dentro e fica colado no texto.
-fun TextB(){
+fun TextB() {
 
-    Text("B", Modifier.padding(16.dp).background(Color.Yellow))
+    Text(
+        "B", Modifier
+            .padding(16.dp)
+            .background(Color.Yellow)
+    )
 }
 
 @Preview(showBackground = true)
@@ -45,29 +55,54 @@ fun TextB(){
 
 // Parte 2: uma cadeia só, lida de fora pra dentro:
 // borda preta → 8dp sem cor (margem) → fundo amarelo → 16dp de padding interno
-fun BodarMargePadding(){
-    Text("Borda + margem + padding", Modifier.border(2.dp, Color.Black).padding(8.dp).background(
-        Color.Yellow).padding(16.dp))
+fun BorderMargePadding() {
+    Text(
+        "Borda + margem + padding", Modifier
+            .border(2.dp, Color.Black)
+            .padding(8.dp)
+            .background(
+                Color.Yellow
+            )
+            .padding(16.dp)
+    )
 }
 
 @Composable
-fun CardPlayList(modifier: Modifier = Modifier){
-    Column(modifier.padding(16.dp),  Arrangement.spacedBy(8.dp)) {
-        Text("Rock Nacional")
-        Text("42 Musicas")
-        Row(Modifier, Arrangement.spacedBy(8.dp) ) {
-            Box(Modifier.size(72.dp, 32.dp).background(Color.Yellow), Alignment.Center){
-                Text("Anos 80")
+fun PlotarTextos(modifier: Modifier = Modifier) {
+    Column(modifier, Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        TextA()
+        TextB()
+        BorderMargePadding()
+    }
+}
+
+@Composable
+fun CardPlayList(
+    modifier: Modifier = Modifier,
+    titulo: String,
+    quantididade: Int,
+    chips: List<String>
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(text = titulo)
+        Text(text = "$quantididade");
+        Row(Modifier, Arrangement.spacedBy(8.dp)) {
+
+            for (chip in chips) {
+                Box(
+                    Modifier
+                        .size(72.dp, 32.dp)
+                        .background(Color.Yellow), Alignment.Center
+                ) {
+                    Text(text =  chip);
+                }
             }
 
 
-            Box(Modifier.size(72.dp, 32.dp).background(Color.Yellow), Alignment.Center){
-                Text("Anos 90")
-            }
-
-            Box(Modifier.size(72.dp, 32.dp).background(Color.Yellow), Alignment.Center){
-                Text("Ao vivo")
-            }
         }
 
     }
@@ -76,9 +111,35 @@ fun CardPlayList(modifier: Modifier = Modifier){
 
 @Preview(showBackground = true)
 @Composable
-fun CardPlayListPreview(){
+fun CardPlayListPreview() {
     TemperatureConverterTheme() {
-        CardPlayList()
+
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            CardPlayList(
+               modifier = Modifier.fillMaxSize(),
+                "Rock internacional",
+                35,
+                mutableListOf("turnstile", "slipknot", "dazing")
+            )
+
+            CardPlayList(
+                modifier = Modifier.border(width = 15.dp, color = Color.Black),
+                "Rock nacional",
+                90,
+                mutableListOf("jotaQuest", "sepultura", "capital inicial")
+            )
+            PlotarTextos()
+        }
+
     }
+}
+
+@Composable
+private fun Chip(texto: String, modifier: Modifier = Modifier){
+    // nao sei bem porque nao publica se o card pode ser reutilizavel neste caso. Qual a explicacao?
 }
 
