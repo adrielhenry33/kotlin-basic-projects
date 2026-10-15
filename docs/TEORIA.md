@@ -1656,6 +1656,156 @@ Imports: `androidx.compose.material3.OutlinedTextField`, `androidx.compose.found
 3. `TelaGorjeta` **stateful** (dona do estado, `rememberSaveable`): usa o `CampoDecimal` e, embaixo, um `Text` com "Gorjeta (10%): X" quando o valor for válido, ou "Digite o valor da conta" quando não for.
 4. Preview da `TelaGorjeta` e teste no modo interativo: `""`, `"50"`, `"50,5"`, `"abc"`, `"-"`.
 5. **Pergunta pra responder num comentário:** por que o estado é `String` e não `Double`?
+
+**Erros comuns vistos no 3.2 (2026-10-08)**
+
+- `rememberSaveable` dentro de uma `class` → não compila: `remember*` só roda dentro de `@Composable` (≈ regra dos hooks). Classe dona de estado de tela = `ViewModel` (Projeto 2).
+- `mutableStateSetOf` (um `Set` observável) no lugar de `mutableStateOf`; `keyboardActions` (botão de ação do teclado) no lugar de `keyboardOptions` (qual teclado); `java.lang.reflect.Modifier` no lugar de `androidx.compose.ui.Modifier`. Todos culpa do autocomplete: conferir o pacote.
+- `replace(".", "")` pra tratar milhar: "50.5" vira 505 **sem erro**. Valor errado silencioso é pior que `null`. Entrada aceita `.` e `,` como decimal; milhar é assunto da exibição.
+- Estado ou `Column(fillMaxSize)` dentro do componente stateless. Stateless = sem `remember`, mas **pode** derivar valores dos parâmetros (`val erro = valor.isNotEmpty() && validarTexto(valor) == null`).
+- `val valor = ...` dentro da função que já tem o parâmetro `valor` → sombreamento (o nome passa a ser outra coisa, com outro tipo).
+- O resultado da validação **não** volta pro estado: estado = texto cru → `TextField`; número = `val` derivada → erro e cálculo.
+
+**Detalhes da solução:**
+- `supportingText = if (erro) { { Text("Valor inválido") } } else { null }`: chaves de fora = bloco do `if`, chaves de dentro = a lambda. O slot é anulável; `null` = sem mensagem.
+- Smart cast: dentro de `if (valor != null)`, o `Double?` vira `Double` sozinho (≈ narrowing do TS).
+- `"%.2f".format(x)`: 2 casas, com o separador do idioma do aparelho. `Double` é binário (`50.5 * 0.10 = 5.050000000000001`, igual ao `0.1 + 0.2` do JS); dinheiro de verdade = `BigDecimal`.
+
+> 📝 Caderno
+> remember só dentro de @Composable · classe dona de estado = ViewModel (depois)
+> stateless: sem remember, mas pode derivar dos parâmetros
+> valor errado silencioso > pior que null · milhar é exibição, não entrada
+> if (x != null) → smart cast · "%.2f".format(x) = 2 casas
+
+**Fluxo do state hoisting, tecla por tecla (revisão 2026-10-09)**
+
+```
+① tela lê o estado → ② desce (valor) → ③ campo desenha → ④ tecla
+→ ⑤ sobe (onValorChange) → ⑥ estado muda → recomposição → ①
+```
+
+| Tecla | sobe | `texto` (estado) | `valor` (derivado) | `erro` |
+|---|---|---|---|---|
+| (início) | — | `""` | `null` | `false` (vazio ≠ erro) |
+| `5` | `onValorChange("5")` | `"5"` | `5.0` | `false` |
+| `,` | `onValorChange("5,")` | `"5,"` | `5.0` (`"5."` é aceito) | `false` |
+| `x` | `onValorChange("5,x")` | `"5,x"` | `null` | `true` |
+
+O campo **não** muda o próprio texto: só avisa. Quem muda é o dono. Com estado `Double`, a vírgula do meio da digitação se perderia.
+
+**Aviso "Suspicious indentation":** linha mais recuada que a anterior parece continuação dela, mas o compilador vê duas instruções. É warning, não erro. `⌥⌘L` resolve.
+
+#### Etapa 3.3: o conversor (enunciado 2026-10-13, fazer sozinho)
+
+**`TelaConversor.kt`:** dois `CampoDecimal` (Celsius e Fahrenheit), sincronizados nos dois sentidos.
+
+1. Funções puras `celsiusParaFahrenheit(c: Double): Double` (`F = C × 9/5 + 32`) e `fahrenheitParaCelsius(f: Double): Double` (`C = (F − 32) × 5/9`). ⚠️ `9 / 5` com dois `Int` = **1** (divisão inteira).
+2. `TelaConversor` stateful, os dois textos em `rememberSaveable` (estado = texto).
+3. Reutilizar o `CampoDecimal` nos dois campos.
+4. Digitou em C → F recebe o convertido com 1 casa (`"%.1f"`); C inválido/vazio → F vazio. E vice-versa. **O campo em que se digita nunca é reformatado.**
+5. Na `MainActivity`: trocar o `Greeting` pela `TelaConversor(modifier = Modifier.padding(innerPadding))` e rodar no emulador.
+6. Girar o emulador: os valores têm que continuar.
+7. Preview separado com o tema.
+
+Perguntas: (a) por que dois estados `String` e não um `Double`? (b) a lógica de sincronizar mora no `CampoDecimal` ou na tela, e por quê? (c) o que acontece no passo 6 com `remember` em vez de `rememberSaveable`?
+
+Bônus: `Text` com "Frio" (< 15) / "Agradável" (15 a 25) / "Quente" (> 25) via `when`, a partir do Celsius; nada se inválido.
+
+**Variação escolhida pelo usuário:** um campo + escolha da escala de destino (Segmented Button), resultado num `Text`. A versão com dois campos sincronizados fica como desafio opcional.
+
+**Segmented Button (Material 3):** 2 a 5 opções curtas, uma por vez (≈ toggle/tabs). Alternativas: `RadioButton` (lista vertical), `Switch` (liga/desliga uma coisa), `FilterChip` (vários marcados).
+
+```kotlin
+enum class Escala(val rotulo: String) {       // enum com propriedade: cada constante carrega um rótulo
+    CELSIUS("Celsius"),
+    FAHRENHEIT("Fahrenheit"),
+}
+
+@Composable
+fun EscolhaConversao(
+    selecionada: Escala,                       // estado desce
+    onSelecionadaChange: (Escala) -> Unit,     // evento sobe
+    modifier: Modifier = Modifier,
+) {
+    SingleChoiceSegmentedButtonRow(modifier = modifier) {
+        Escala.entries.forEachIndexed { index, escala ->
+            SegmentedButton(
+                selected = escala == selecionada,
+                onClick = { onSelecionadaChange(escala) },   // a escala DESTE botão
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = Escala.entries.size),
+            ) { Text(escala.rotulo) }
+        }
+    }
+}
+```
+
+- `SegmentedButton` só existe **dentro** do `SingleChoiceSegmentedButtonRow` (função de escopo, como `Modifier.weight` só em `Row`/`Column`). Fora dele, o autocomplete nem mostra.
+- `forEachIndexed { index, item -> }`: índice primeiro (no JS é `(item, index)`). O índice serve pro `shape` (arredondar só as pontas).
+- `Escala.entries` = lista de todas as constantes. Novo valor no enum → botão novo sozinho.
+- **Enum × String:** erro de digitação numa constante não compila; numa `String` passa calado (`"Farenheit"`).
+- **`when` exaustivo:** com enum, o compilador exige todos os casos (sem `else`). Constante nova (`KELVIN`) quebra a compilação onde falta tratar; com `if/else` cairia calada no `else`. Idiomático: `return when (escala) { A -> x; B -> y }`.
+- **Elvis como guard clause:** `val temp = validarTexto(t) ?: return null`. Depois disso `temp` é não nulo. É o que a IDE sugere em "If-Null return/break/... foldable to '?:'".
+- **Nunca passar `MutableState` pro filho.** Passar o valor + `onXChange`. O parâmetro é somente leitura: o filho **chama** o evento, não atribui (`selecionada = escala` nem compila). O ✓ muda na volta, quando o novo valor desce.
+- **Mesmo pacote dispensa import** (a unidade de visibilidade é o pacote, não o arquivo). No topo do arquivo só há declarações (`fun`, `class`, `enum`, `val`); chamadas só dentro de funções, composable só dentro de `@Composable`. `package` uma vez só, na 1ª linha.
+- **Fórmulas** (abaixo). `9 / 5` com dois `Int` = 1 (divisão inteira); começando pelo `Double` (multiplicando o `temp` primeiro), a conta inteira vira `Double`.
+
+```kotlin
+Escala.FAHRENHEIT -> temp * 9 / 5 + 32     // C → F
+Escala.CELSIUS -> (temp - 32) * 5 / 9      // F → C
+```
+
+- **Tipografia do tema:** `style = MaterialTheme.typography.headlineSmall` (título), `displaySmall` (número grande), `bodyLarge` (texto); `color = MaterialTheme.colorScheme.primary`. ≈ variáveis de design system em vez de `fontSize` solto.
+
+> 📝 Caderno
+> SegmentedButton só dentro do SingleChoiceSegmentedButtonRow
+> forEachIndexed { index, item -> } · Escala.entries = todas as constantes
+> enum(val rotulo) → Escala.CELSIUS.rotulo
+> when com enum = exaustivo · if/else engole caso novo
+> x ?: return null = guard clause
+> filho recebe valor + onXChange · NUNCA MutableState · parâmetro é só leitura
+> mesmo pacote = sem import
+> estilo = MaterialTheme.typography.* · cor = MaterialTheme.colorScheme.*
+
+**Separar view de estado na tela inteira (2026-10, pedido do usuário)**
+
+Mesmo padrão do `CampoDecimal`, só que na tela toda. Padrão de mercado: `XScreen` (stateful) + `XContent` (stateless).
+
+```kotlin
+// ESTADO: só guarda e repassa
+@Composable
+fun TelaTemperatura(modifier: Modifier = Modifier) {
+    var escala by rememberSaveable { mutableStateOf(Escala.CELSIUS) }
+    var texto by rememberSaveable { mutableStateOf("") }
+
+    ConteudoTemperatura(
+        escala = escala, onEscalaChange = { escala = it },
+        texto = texto, onTextoChange = { texto = it },
+        modifier = modifier,
+    )
+}
+
+// VIEW: só desenha o que recebe e repassa os eventos pros filhos
+@Composable
+fun ConteudoTemperatura(
+    escala: Escala, onEscalaChange: (Escala) -> Unit,
+    texto: String, onTextoChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val temperatura = converterTemperatura(texto, escala)   // derivado, não é estado
+    Column(modifier = modifier ...) { ... }
+}
+```
+
+- Na view, os eventos são **repassados** (`onSelecionadaChange = onEscalaChange`), igual ao `CampoDecimal` com o `onValueChange`.
+- **Ganho 1, preview:** o preview chama a **view com dados fixos** (`texto = "37"`, `onTextoChange = {}`). Dá pra ter um preview por situação (válido, erro, vazio) sem digitar nada.
+- **Ganho 2, preparação pro ViewModel:** no Projeto 2, só a parte de ESTADO muda (o `rememberSaveable` vira um `ViewModel`); a view fica idêntica.
+- **Preview separado com o tema:** o app real recebe o tema da `MainActivity` (`setContent`); o preview não passa por ela, então a função de preview reproduz esse ambiente (≈ story do Storybook embrulhando nos providers).
+
+> 📝 Caderno
+> Tela = ESTADO (XScreen, remember) + VIEW (XContent, só parâmetros)
+> view repassa eventos · deriva valores · não guarda nada
+> preview chama a VIEW com dados fixos e {} nos eventos
+> ViewModel depois troca só o ESTADO; a VIEW não muda
 - O conteúdo do `Box` vai na lambda final (≈ `children`). O centro vem de `contentAlignment = Alignment.Center`, nos parênteses.
 
 - `@Preview(showBackground = true)` pinta um fundo branco **só na preview** (sem ele o fundo é transparente e mostra a cor do Studio). Cor própria: `backgroundColor = 0xFFEEEEEE` (ARGB). Diferente de `Modifier.background(cor)`, que pinta o componente no app de verdade.
