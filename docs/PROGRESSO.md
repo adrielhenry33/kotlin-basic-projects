@@ -98,17 +98,20 @@ Estrutura: Teoria fundamentada + Exercícios práticos + Aplicações em projeto
 🔄 6. Jetpack Compose
      ├─ ✅ Nível 1: Fundações — teoria (2026-09-29, TEORIA.md §6) + remember vs
      │         rememberSaveable a fundo (§5.1) + 8 perguntas corrigidas (2026-09-30)
-     ├─ 🔄 Projeto 1: Temperature Converter (`TemperatureConverter/` neste repo)
+     ├─ ✅ Projeto 1: Temperature Converter (`TemperatureConverter/` neste repo, fechado 2026-10-16)
      │    ├─ ✅ Etapa 1: criar projeto (Empty Activity/Compose), build debug OK (2026-09-30)
      │    ├─ ✅ Etapa 2: tour pelo template (MainActivity, setContent, Theme, Greeting,
      │    │         @Preview, Gradle Fase 0) — teoria 2026-09-30 + aprofundamento 2026-10-02
      │    │         + revisão completa 2026-10-05; checagem PULADA a pedido (ver PENDÊNCIAS)
-     │    └─ 🔄 Etapa 3: ✅ 3.1 ordem do Modifier + Column/Row/Box (teoria e
+     │    └─ ✅ Etapa 3: ✅ 3.1 ordem do Modifier + Column/Row/Box (teoria e
      │              LayoutPlayground.kt concluído 2026-10-05; 3.1b CardPlayList
      │              reutilizável 2026-10-07, ajustes de estilo pendentes)
      │              ✅ 3.2 TextField numérico + toDoubleOrNull (teoria 2026-10-07;
      │                CampoDecimal/TelaGorjeta 2026-10-08, COM solução entregue)
-     │              → 3.3 conversor (enunciado 2026-10-13), sozinho   👈 VOCÊ ESTÁ AQUI
+     │              ✅ 3.3 conversor (um campo + Segmented Button, estado × view,
+                perguntas corrigidas; fechado 2026-10-16)
+     ├─ ⬜ Projeto 2: Guessing Game: começa pela teoria de ViewModel +
+     │         viewModelScope + collectAsStateWithLifecycle   👈 VOCÊ ESTÁ AQUI
      └─ 9 projetos curados (Temperature Converter → To-Do Notes,
         ver lista completa abaixo), nível crescente
      │
@@ -302,6 +305,12 @@ Código roda em Kotlin local (IntelliJ). Exercícios começam com TODOs, você p
 ## LOG DE PROGRESSO
 
 > Cada entrada nova vai no topo, com data.
+
+- **2026-10-16 (extra)**: A pedido, **leitura extra sobre Sentry** (monitoramento de crash) adicionada ao fim da TEORIA ("Extra — Monitoramento de crash com Sentry"), vinda da instalação no GodiTrack. Fora do roadmap: usa `Application`, Gradle e R8, que ainda não foram ensinados (não entram em exercício antes da seção 9 / plataforma Android). Conteúdo: o que é capturado (crash, ANR, nativo, erro tratado via `captureException`), evento × issue, símbolos (`mapping.txt` do R8, NDK, source map), ponte RN → Kotlin (`SentryAndroid.init` na `Application`, `runCatching { }.onFailure { Sentry.captureException(it) }` ligando com `Result<T>` da seção 1), LGPD (o que não mandar), e o limite (Android matando o app por bateria não é crash). 4 perguntas pra responder no caderno.
+
+- **2026-10-16 (cont.)**: **3.3 fechada, Projeto 1 ✅.** Feito pelo usuário: `fillMaxWidth()` passado por quem chama nos dois filhos, `val rotulo` com `when (escala)` descrevendo o **destino** ("Converter Temperatura para Celsius"; aceito, é coerente com o botão = destino), `onValueChange` corrigido (incluindo o `TelaGorjeta`, que quebrou o build porque o rename foi feito à mão e não com `⇧F6`), frase de erro completa. `compileDebugKotlin` OK. Dúvida resolvida: "o filho não recebe o modifier do pai (`Column`)?" → não: o `modifier` recebido vem de quem chamou e vai só na raiz; os filhos ganham `Modifier.xxx()` novo; o layout pai posiciona, não repassa modifier (passar o recebido aos filhos duplicaria o `padding(innerPadding)`). **Decisão do usuário:** não reordenar os parâmetros do `EscolhaConversao` (avisado que é convenção das diretrizes do Compose/lint); vai pôr `modifier` por último nos próximos. Ficou: `EscolhaConversao`/`CampoDecimal` com `modifier: Modifier` sem `= Modifier` (levar pros próximos), teste de rotação no emulador, bônus Frio/Agradável/Quente (opcional). Commit feito pelo usuário. **Próximo: Projeto 2 (Guessing Game)**, começando pela teoria de `ViewModel`.
+
+- **2026-10-16**: Retomada da 3.3. A `MainActivity` já chama `TelaTemperatura` (commit `d2c1114`) ✅. **Perguntas (a)/(b)/(c)** adaptadas pra variação de um campo, respondidas e corrigidas (TEORIA §6): (a) ✅ parcial, faltou "`Double` não representa o texto intermediário (`""`, `"-"`, `"3."`, `"abc"`)"; (b) ⚠️ o motivo dado foi "o Conteudo é stateless", mas stateless = não guarda estado, e calcular pode; o motivo real é testável/reutilizável/previsível (dois eixos: onde mora o estado × regra vs desenho); (c) ✅ (mudança de configuração recria a Activity). Faltam pro usuário: `fillMaxWidth` (hoje o `ConteudoTemperatura` passa `Modifier` e anula o padrão `fillMaxWidth()` do `EscolhaConversao`, então nenhum filho ocupa a largura), rótulo do campo conforme a escala (pergunta-guia: a escala selecionada é a origem ou o destino?), `onVaLueChange`, `modifier` sem valor padrão no `CampoDecimal`, ordem dos parâmetros do `EscolhaConversao`, teste de rotação, bônus Frio/Agradável/Quente, commit. Depois: Projeto 2 (Guessing Game), começando pela teoria de `ViewModel`.
 
 - **2026-10 (cont.)**: A pedido (edição sob pedido), a tela foi dividida em **estado × view** no mesmo arquivo `ui/TelaTemperatura.kt`: `TelaTemperatura` (stateful, só `rememberSaveable` + repasse) e `ConteudoTemperatura` (stateless, recebe escala/texto + eventos, deriva a temperatura). Previews agora chamam a view com dados fixos (válido "37" em Fahrenheit e erro "abc"). `compileDebugKotlin` OK. Padrão XScreen/XContent registrado na TEORIA §6 como ponte pro ViewModel do Projeto 2.
 

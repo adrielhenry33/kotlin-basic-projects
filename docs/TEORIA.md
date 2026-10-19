@@ -1806,6 +1806,55 @@ fun ConteudoTemperatura(
 > view repassa eventos · deriva valores · não guarda nada
 > preview chama a VIEW com dados fixos e {} nos eventos
 > ViewModel depois troca só o ESTADO; a VIEW não muda
+
+#### Correção das perguntas da 3.3 (2026-10-16)
+
+**(a) Por que o estado é `String` e não `Double`?** ✅ parcial. O usuário respondeu que "a conversão não é papel do estado", o que está certo. O motivo principal é que **um `Double` não representa o que o usuário digita no meio do caminho:**
+
+| Digitado | Como `Double` |
+|---|---|
+| `""` | não existe (`null` ou `0.0`, e o `0.0` aparece no campo) |
+| `"-"` | não existe (não dá pra começar um negativo) |
+| `"3."` | vira `3.0` (o ponto digitado some) |
+| `"abc"` | não existe (não dá pra mostrar o erro) |
+
+Estado `Double` = campo reformatado a cada tecla, brigando com o usuário.
+
+**(b) Por que `converterTemperatura` é função pura fora do composable?** ⚠️ O motivo dado ("o Conteudo é stateless") não é esse. Stateless = não **guarda** estado. Calcular pode (o `ConteudoTemperatura` deriva `temperatura`, e isso está certo). O motivo real:
+- **testável sem Android** (teste unitário na JVM, sem emulador nem Compose);
+- **reutilizável** (vai pro `ViewModel` no Projeto 2 e pro módulo `shared` no KMP); dentro de um `@Composable` só serviria pra UI;
+- **previsível** (mesma entrada, mesma saída, sem efeito colateral), o que importa porque o composable roda várias vezes.
+
+**(c) `remember` no lugar de `rememberSaveable` no giro?** ✅ Perde o valor. Girar = **mudança de configuração**: a Activity é destruída e recriada, e a composição recomeça do zero. `remember` sobrevive só à recomposição; `rememberSaveable` grava no `Bundle` (sobrevive ao giro e à morte do processo pelo sistema).
+
+> 📝 Caderno
+> estado = o que o usuário vê/edita (texto) · número = val derivada
+> dois eixos diferentes:
+>   stateful × stateless → ONDE mora o estado
+>   função pura × composable → REGRA × DESENHO
+> remember: sobrevive à recomposição · rememberSaveable: + giro + morte do processo
+
+**Dúvida (2026-10-16): "o filho não recebe o modifier do pai, a `Column`?"** Não. O `modifier` recebido vem de **quem chamou** o composable e vai **só na raiz**. Os filhos ganham um `Modifier` novo.
+
+```
+MainActivity
+  TelaTemperatura(modifier = Modifier.padding(innerPadding))
+        ▼ repassa
+  ConteudoTemperatura(modifier = modifier)
+        ▼ usa na RAIZ
+  Column(modifier = modifier.fillMaxSize().padding(16.dp))
+        ├─ EscolhaConversao(modifier = Modifier.fillMaxWidth())   ← NOVO
+        └─ CampoDecimal(modifier = Modifier.fillMaxWidth())       ← NOVO
+```
+
+Passar o `modifier` recebido aos filhos aplicaria o `padding(innerPadding)` de novo em cada um (espaço duplicado). Valor padrão (`= Modifier.fillMaxWidth()`) só vale quando ninguém passa nada; quem chama com `Modifier` vazio o anula. Por isso o padrão é sempre `= Modifier` e o tamanho vem da chamada.
+
+> 📝 Caderno
+> `modifier` recebido → só na raiz (pedido de quem me chamou)
+> filhos → `Modifier.xxx()` novo (meu pedido pra eles)
+> o layout pai posiciona; não repassa modifier
+> parâmetro: `modifier: Modifier = Modifier`, 1º opcional
+> renomear = ⇧F6 (à mão quebra quem chama)
 - O conteúdo do `Box` vai na lambda final (≈ `children`). O centro vem de `contentAlignment = Alignment.Center`, nos parênteses.
 
 - `@Preview(showBackground = true)` pinta um fundo branco **só na preview** (sem ele o fundo é transparente e mostra a cor do Studio). Cor própria: `backgroundColor = 0xFFEEEEEE` (ARGB). Diferente de `Modifier.background(cor)`, que pinta o componente no app de verdade.
@@ -1989,3 +2038,107 @@ Fase C  CD ───────────────────────
 _Teoria será adicionada quando o tópico começar._
 
 **Objetivo combinado em 2026-09-21:** depois do CI/CD, projeto de fechamento mais avançado. Referência conceitual: o app open-source **CloudStream** (Kotlin, arquitetura de plugins carregados dinamicamente, Media3/ExoPlayer pra reprodução de vídeo, OkHttp/Jsoup pros provedores). A ideia é reproduzir a **arquitetura** — catálogo consumido de uma API legal, player com Media3, cache/favoritos com Room, paginação (Paging 3), Clean Architecture completa — e não as fontes de conteúdo pirateado do projeto original.
+
+---
+
+## Extra — Monitoramento de crash com Sentry (leitura, 2026-10-16)
+
+> **Fora do roadmap.** Leitura de referência, vinda do trabalho no GodiTrack (React Native), onde o Sentry foi instalado em 2026-10-16. Usa coisas que **ainda não foram ensinadas** aqui — a classe `Application`, dependências e plugins do Gradle, R8 — então é pra ler e entender a ideia; a prática fica pra depois da seção 9 (Gradle) e da plataforma Android. Versões das bibliotecas: conferir na documentação do Sentry na hora de usar.
+
+### O problema
+No aparelho do usuário o app quebra e você **não fica sabendo**: não tem Logcat, não tem debugger, e a maioria das pessoas não reclama — desinstala. Ferramenta de *crash reporting* captura o erro no aparelho e manda pra um painel.
+
+> 📝 **Caderno** — Crash reporting = o Logcat do celular do usuário, chegando no seu painel, agrupado e contado.
+
+### O que o Sentry captura
+| Tipo | Exemplo | Como chega |
+|---|---|---|
+| Exceção não tratada (crash) | `NullPointerException` derruba o app | Automático |
+| ANR (app travado) | Main thread bloqueada ~5 s | Automático (Android) |
+| Crash nativo (C/C++) | Biblioteca NDK falha | Automático |
+| Erro tratado que importa | `catch` de falha ao enviar um arquivo | **Manual**: `Sentry.captureException(e)` |
+
+Cada erro vira um **evento**; eventos iguais viram um **issue** (agrupados). O painel mostra quantas vezes (*events*) e **quantos usuários** foram afetados — é isso que define a prioridade.
+
+### O que vem em cada evento
+```
+Evento
+ ├─ exceção: tipo + mensagem
+ ├─ stack trace: o caminho até o erro
+ ├─ breadcrumbs: o que aconteceu antes (telas, cliques, rede, logs)
+ ├─ contexto: aparelho, Android/iOS, versão do app, memória
+ ├─ release + environment: 1.4.0 / producao
+ └─ usuário: o que VOCÊ decidir mandar (ex.: só um ID)
+```
+
+### Símbolos: por que o stack trace vem "embaralhado"
+No build de release o código é transformado: o **R8** encolhe e **ofusca** (classes viram `a.b.c`), e o nativo vira endereço de memória. O crash chega assim:
+```
+at a.b.c.d(Unknown Source:12)
+```
+Os **símbolos** são o "dicionário" pra traduzir de volta:
+
+| Arquivo | Traduz | Gerado por |
+|---|---|---|
+| `mapping.txt` | nome ofuscado → classe/método real (Kotlin/Java) | R8 (`app/build/outputs/mapping/release/`) |
+| símbolos NDK | endereço → função (C/C++) | build nativo |
+| source map (`.map`) | posição no bundle → arquivo/linha (só JS/React Native) | Metro/Hermes |
+
+> 📝 **Caderno** — R8 embaralha os nomes; o `mapping.txt` desembaralha. Perdeu o `mapping.txt` de uma versão = crashes dela ilegíveis pra sempre. Um por build.
+
+O normal é **enviar os símbolos pro Sentry** a cada build (ele traduz sozinho). No GodiTrack escolhemos o **modo confidencial**: os símbolos ficam com a gente e a tradução é local (o código não sai da empresa).
+
+### Ponte React Native → Kotlin nativo
+| | React Native (GodiTrack) | Android nativo (Kotlin) |
+|---|---|---|
+| Biblioteca | `@sentry/react-native` | `io.sentry:sentry-android` |
+| Onde inicia | `index.ts`, antes de tudo | `Application.onCreate()` (ou automático pelo `AndroidManifest`) |
+| Erro de tela | `Sentry.ErrorBoundary` (fallback no lugar do crash) | não existe igual: crash não tratado fecha o app; trata-se com `try/catch` / `runCatching` |
+| Registrar erro tratado | `Sentry.captureException(erro)` | `Sentry.captureException(e)` |
+| Enviar símbolos no build | config plugin / wizard | plugin Gradle `io.sentry.android.gradle` |
+
+### Como fica em Kotlin (referência)
+Iniciar na `Application` (a classe que nasce antes de qualquer `Activity` — **ainda não vista**):
+```kotlin
+class MeuApp : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        SentryAndroid.init(this) { options ->
+            options.dsn = BuildConfig.SENTRY_DSN   // endereço do projeto no Sentry
+            options.isSendDefaultPii = false        // não mandar IP, nome, e-mail
+            options.environment = if (BuildConfig.DEBUG) "desenvolvimento" else "producao"
+            options.beforeSend = SentryOptions.BeforeSendCallback { evento, _ ->
+                evento.user = evento.user?.let { User().apply { id = it.id } } // só o ID
+                evento                                                       // null = descarta
+            }
+        }
+    }
+}
+```
+
+> Iniciando à mão assim, desligar o início automático no `AndroidManifest.xml` (`<meta-data android:name="io.sentry.auto-init" android:value="false" />`) — senão ele inicia duas vezes.
+
+Registrar um erro **tratado** — liga direto com a seção 1 (`Result<T>` / `runCatching`):
+```kotlin
+suspend fun enviarCanhoto(arquivo: File): Result<Unit> =
+    runCatching { api.enviar(arquivo) }
+        .onFailure { erro -> Sentry.captureException(erro) } // vai pro painel
+// quem chama decide o que mostrar pro usuário (Result), e o erro não some em silêncio
+```
+
+> 📝 **Caderno** — Crash não tratado o Sentry pega sozinho. Erro que o `catch`/`runCatching` engole, **só** se eu chamar `captureException`. Regra: registrar o que importa pro negócio (falhou enviar, falhou pagar), não todo `catch`.
+
+### Privacidade (LGPD) — o que NÃO mandar
+- **Dado pessoal**: CPF, nome, e-mail, telefone, localização exata, IP → `isSendDefaultPii = false` + limpar no `beforeSend`.
+- **Breadcrumbs** podem levar URLs da API e logs → filtrar (`beforeBreadcrumb`) ou desligar.
+- **Segredo** (token, senha) nunca em log — se está no log, vai no breadcrumb.
+- Os dados ficam fora do Brasil (regiões US/UE) → minimizar o que sai.
+
+### O que o Android mata e o Sentry NÃO vê
+O sistema (Xiaomi, Samsung…) **encerrar o app em segundo plano pra economizar bateria não é crash** — não tem exceção, o processo só some. O Sentry não registra. Pra isso o app precisa de outra estratégia (no GodiTrack: WorkManager conferindo a cada 15 min e religando o rastreamento).
+
+### Perguntas pra fixar (responder no caderno)
+1. Qual a diferença entre **evento** e **issue** no Sentry? Por que "usuários afetados" importa mais que "quantidade de eventos"?
+2. Por que o stack trace de um build release chega como `a.b.c.d`? Qual arquivo traduz e quem gera?
+3. Um `runCatching { }` que falha e você só mostra um Toast: o Sentry fica sabendo? O que fazer se esse erro importa?
+4. Cite dois dados que **não** podem ir pro Sentry e como evitar que vão.
