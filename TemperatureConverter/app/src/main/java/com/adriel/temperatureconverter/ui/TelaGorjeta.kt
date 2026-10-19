@@ -33,7 +33,7 @@ fun TelaGorjeta(modifier: Modifier = Modifier) {
     ) {
         CampoDecimal(
             valor = texto,
-            onVaLueChange = { texto = it },
+            onValueChange = { texto = it },
             rotulo = "Valor da conta",
             modifier = modifier
         )

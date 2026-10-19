@@ -16,7 +16,7 @@ fun validarTexto(valor: String): Double? {
 @Composable
 fun CampoDecimal(
     valor: String,
-    onVaLueChange: (String) -> Unit,
+    onValueChange: (String) -> Unit,
     rotulo: String,
     modifier: Modifier
 ) {
@@ -25,7 +25,7 @@ fun CampoDecimal(
         value = valor,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         modifier = modifier,
-        onValueChange =  onVaLueChange,
+        onValueChange =  onValueChange,
         label = { Text(rotulo) },
         singleLine = true,
         isError = erro,

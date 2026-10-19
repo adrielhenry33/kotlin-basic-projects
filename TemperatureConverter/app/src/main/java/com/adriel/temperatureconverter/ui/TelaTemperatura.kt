@@ -40,7 +40,7 @@ fun converterTemperatura(valorDigitado: String, escala: Escala): Double? {
 
 @Composable
 fun EscolhaConversao(
-    modifier: Modifier = Modifier.fillMaxWidth(),
+    modifier: Modifier,
     onSelecionadaChange: (Escala) -> Unit,
     selecionada: Escala
 ) {
@@ -86,6 +86,11 @@ fun ConteudoTemperatura(
     modifier: Modifier = Modifier,
 ) {
     val temperatura = converterTemperatura(texto, escala)
+    val rotulo = when (escala) {
+        Escala.CELSIUS -> "Converter Temperatura para Celsius"
+        Escala.FAHRENHEIT -> "Converter Temperatura para Fahrenheit"
+    }
+
 
     Column(
         modifier = modifier
@@ -98,22 +103,22 @@ fun ConteudoTemperatura(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         EscolhaConversao(
-            modifier = Modifier,
+            modifier = Modifier.fillMaxWidth(),
             onSelecionadaChange = onEscalaChange,
             selecionada = escala
         )
         CampoDecimal(
             valor = texto,
-            onVaLueChange = onTextoChange,
-            rotulo = "Conversor de Temperatura",
-            modifier = Modifier,
+            onValueChange = onTextoChange,
+            rotulo = rotulo,
+            modifier= Modifier.fillMaxWidth()
         )
         Text(
             text = if (temperatura != null) {
                 "Temperatura Convertida : ${"%.2f".format(temperatura)}${escala.simbolo}"
 
             } else {
-                "Digite a temperatura "
+                "Digite a temperatura corretamente"
             }
         )
     }
