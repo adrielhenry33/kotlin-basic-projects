@@ -1855,6 +1855,24 @@ Passar o `modifier` recebido aos filhos aplicaria o `padding(innerPadding)` de n
 > o layout pai posiciona; não repassa modifier
 > parâmetro: `modifier: Modifier = Modifier`, 1º opcional
 > renomear = ⇧F6 (à mão quebra quem chama)
+
+**Dúvida (2026-11-02, Guessing Game): "então é `Modifier.característica()`, porque é o padrão?"** Sim, `Modifier.algo()` começa uma cadeia **vazia** e adiciona as características, na ordem:
+
+```kotlin
+Modifier.fillMaxWidth().height(100.dp).padding(8.dp)
+// vazio → largura toda → 100dp de altura → recuo
+```
+
+O motivo não é "ser o padrão": `Modifier` maiúsculo é o **ponto de partida do zero**; `modifier` minúsculo **já vem com coisas** de quem te chamou (ex.: o `innerPadding`).
+
+| Escreve | Começa de | Usar em |
+|---|---|---|
+| `Modifier.algo()` | do zero (vazio) | filhos, ou quem não recebeu modifier |
+| `modifier.algo()` | do que o pai mandou | só na raiz do seu componente |
+
+> 📝 Caderno
+> Modifier.algo() = do zero (filhos) · modifier.algo() = do pai (só raiz)
+
 - O conteúdo do `Box` vai na lambda final (≈ `children`). O centro vem de `contentAlignment = Alignment.Center`, nos parênteses.
 
 - `@Preview(showBackground = true)` pinta um fundo branco **só na preview** (sem ele o fundo é transparente e mostra a cor do Studio). Cor própria: `backgroundColor = 0xFFEEEEEE` (ARGB). Diferente de `Modifier.background(cor)`, que pinta o componente no app de verdade.
@@ -1973,13 +1991,382 @@ O repo é um **monorepo de projetos independentes**: a raiz não tem `settings.g
 | 8 | Wander | Google Maps + localização | Conecta direto com o domínio do GodiTrack (rotas, rastreamento) |
 | 9 | To-Do Notes | Testes automatizados (Room + Coroutines) | Ponte direta pro item 9 (CI/CD) — CI sem teste automatizado não faz muito sentido |
 
+### Projeto 2: Guessing Game
+
+#### Arquivo vermelho no Studio não é erro (2026-10-19)
+
+A cor do **nome** do arquivo no painel é o **status no git**, não compilação:
+
+| Cor do nome | Significa |
+|---|---|
+| Vermelho | *Unversioned*: o git não conhece (nunca deu `add`) |
+| Verde | *Added*: está no stage, ainda não commitado |
+| Azul | *Modified*: já versionado e alterado |
+| Cinza/oliva | ignorado pelo `.gitignore` |
+| Branco/normal | versionado e sem mudança |
+
+Erro de verdade aparece como **sublinhado ondulado vermelho** no nome (e no código), não como texto vermelho. Trocar a cor: Settings (`⌘,`) → Version Control → File Status Colors → *Unversioned*. Melhor saída: `git add` + commit, e o vermelho some sozinho. Ao criar arquivo, o Studio pergunta "Add file to Git?"; marcar "Don't ask again" + Add faz o `add` automático.
+
+> 📝 Caderno
+> nome vermelho = git não conhece · verde = add · azul = modificado
+> erro = sublinhado ondulado, não cor do nome
+
+#### Teoria: ViewModel + viewModelScope + collectAsStateWithLifecycle (2026-10-19)
+
+**O problema que o Projeto 1 deixou:** o estado morava no composable (`rememberSaveable`). Funciona pra 2 campos, mas:
+- a regra de negócio fica misturada com a UI (difícil testar sem tela);
+- o `Bundle` só guarda tipo simples e pouco dado (`data class` própria = crash, lembra?);
+- não existe um lugar pra uma coroutine que **sobreviva à rotação** (ex.: chamada de rede no meio da rotação).
+
+**ViewModel (Jetpack):** classe que guarda o estado e a lógica de **uma tela**. O Android a mantém **fora** da Activity, então ela sobrevive à mudança de configuração (rotação, tema, idioma). Morre quando a tela sai de vez (voltar/`finish`), e aí chama `onCleared()`.
+
+```
+Activity:  criada ── rotação ──X recriada ──── voltar ──X
+ViewModel: [══════════ mesma instância ════════════]  onCleared()
+remember:  [═════════]X        [═══════════]X
+```
+
+Não sobrevive à **morte do processo** (Android mata o app em background por memória). Pra isso existe o `SavedStateHandle`, que fica pra depois.
+
+**Ponte React/TS:** é como um custom hook cujo estado mora **fora** do componente (tipo uma store Zustand escopada à tela). No RN não tem o problema da rotação recriar tudo; no Android tem, e o ViewModel é a resposta oficial.
+
+**`viewModelScope`:** um `CoroutineScope` que vem pronto no ViewModel e é **cancelado no `onCleared()`**. Substitui o `scope` que vocês passavam no construtor nos exercícios de Flow. Roda na Main por padrão e usa `SupervisorJob` (uma coroutine filha que falha não derruba as outras).
+
+**`update { }` no `MutableStateFlow`:** lê o valor atual, aplica a função e grava, de forma **atômica**. `_estado.value = _estado.value.copy(...)` são dois passos (ler e gravar); se duas coroutines fizerem isso juntas, uma sobrescreve a outra. `update { it.copy(...) }` repete a operação se o valor mudou no meio. É o padrão de mercado pra estado em `data class`.
+
+**Exemplo (placar de basquete, não é o jogo):**
+
+```kotlin
+data class PlacarUiState(
+    val pontosCasa: Int = 0,
+    val pontosVisitante: Int = 0,
+    val sincronizando: Boolean = false,
+)
+
+class PlacarViewModel : ViewModel() {
+    private val _uiState = MutableStateFlow(PlacarUiState())
+    val uiState: StateFlow<PlacarUiState> = _uiState.asStateFlow()
+
+    // evento sobe: a tela chama, o ViewModel decide
+    fun marcarCasa(pontos: Int) {
+        _uiState.update { it.copy(pontosCasa = it.pontosCasa + pontos) }
+    }
+
+    fun sincronizar() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(sincronizando = true) }
+            delay(1_000) // simula a rede
+            _uiState.update { it.copy(sincronizando = false) }
+        }
+    }
+}
+```
+
+**Na tela: `viewModel()` + `collectAsStateWithLifecycle()`**
+
+```kotlin
+@Composable
+fun TelaPlacar(
+    modifier: Modifier = Modifier,
+    viewModel: PlacarViewModel = viewModel(),
+) {
+    val estado by viewModel.uiState.collectAsStateWithLifecycle()
+
+    ConteudoPlacar(
+        estado = estado,
+        onMarcarCasa = { pontos -> viewModel.marcarCasa(pontos) },
+        onSincronizar = { viewModel.sincronizar() },
+        modifier = modifier,
+    )
+}
+```
+
+- `viewModel()` (lib `lifecycle-viewmodel-compose`) **busca** a instância que já existe pra essa tela, ou cria na 1ª vez. Por isso depois da rotação vem a **mesma** instância. Nunca `PlacarViewModel()` direto no composable: isso cria um novo a cada rotação (e a cada recomposição), e o estado se perde.
+- Como valor padrão do parâmetro: a tela real usa o padrão, e um teste pode passar outro.
+- `collectAsStateWithLifecycle()` (lib `lifecycle-runtime-compose`) transforma o `StateFlow` em `State` do Compose (o `by` é a mesma delegação do `mutableStateOf`). Coleta só enquanto o app está **visível** (STARTED); foi pro background, para; voltou, retoma.
+- `collectAsState()` (sem o Lifecycle) coleta enquanto o composable existe, **inclusive em background**: gasta à toa (GPS, banco, rede continuam rodando).
+- Casa com o `WhileSubscribed(5_000)` do `stateIn`: app em background → o coletor sai → 5 s depois o upstream para. Rotação leva menos de 5 s → o upstream **não** reinicia.
+- `ConteudoPlacar` continua **stateless** (igual ao `ConteudoTemperatura`), e o preview chama ele com dados fixos. Preview com ViewModel de verdade não é o padrão.
+
+```
+         estado (StateFlow) desce
+ViewModel ────────────────────────▶ TelaX (coleta) ──▶ ConteudoX (desenha)
+    ▲                                                        │
+    └──────────── evento sobe (marcarCasa, chutar...) ◀──────┘
+```
+
+> 📝 Caderno
+> ViewModel = estado + lógica da tela, sobrevive à rotação, morre no voltar (onCleared)
+> viewModelScope = scope que cancela no onCleared
+> _uiState privado (Mutable) · uiState público (StateFlow) · update { it.copy() } atômico
+> tela: viewModel() busca/cria · collectAsStateWithLifecycle() para em background
+> Tela (stateful, ViewModel) → Conteudo (stateless, preview)
+
+**Dependências (Gradle Fase 0, de novo):** o template não traz nenhuma das duas libs. As duas são do grupo `androidx.lifecycle` e usam a **mesma versão** que o `lifecycle-runtime-ktx` já declarado no `libs.versions.toml`:
+- `androidx.lifecycle:lifecycle-viewmodel-compose` → `viewModel()`
+- `androidx.lifecycle:lifecycle-runtime-compose` → `collectAsStateWithLifecycle()`
+
+**Perguntas pra fixar (responder no caderno):**
+- (a) Por que `_uiState` é `private` e `MutableStateFlow`, e `uiState` é público e tipado como `StateFlow`?
+- (b) Gira a tela: o que acontece com o ViewModel, com um `remember` e com um `rememberSaveable`? E ao apertar voltar?
+- (c) Por que `val vm = PlacarViewModel()` dentro do composable está errado?
+- (d) App 10 s em background, com `stateIn(..., WhileSubscribed(5_000), ...)`: o que acontece com o upstream usando `collectAsStateWithLifecycle()`? E com `collectAsState()`?
+
+**Correção das perguntas (2026-10-19):**
+- (a) ⚠️ parcial. A ideia de encapsular estava certa, mas não existe uma "variável de controle". O certo: **só o ViewModel escreve** no estado; a tela só lê (`StateFlow` não tem `.value =`) e pede mudanças **chamando funções** do ViewModel (os eventos). Assim a regra de quem muda o estado fica num lugar só.
+- (b) ⚠️ parcial. `remember` ✅ e `rememberSaveable` ✅. Faltou o principal: **na rotação o ViewModel continua sendo a mesma instância**, com o estado intacto. Detalhe: quem chama o `onCleared()` é o Android ao destruir a tela de vez, não a Activity. Ao voltar, `remember` e `rememberSaveable` também se perdem.
+- (c) ❌ o motivo principal é outro. Testabilidade é o motivo do **valor padrão** `viewModel: X = viewModel()`. O motivo do erro é o ciclo de vida: o composable roda várias vezes (recomposição) e a rotação recria tudo, então `PlacarViewModel()` cria uma instância **nova** a cada vez e o estado volta a zero. Além disso, o Android não conhece essa instância: ela não sobrevive à rotação e o `onCleared()` nunca roda, então o `viewModelScope` nunca é cancelado (vazamento).
+- (d) Em aberto. Dica 2 (2026-10-19, revista em 2026-10-20): **upstream** = a fonte antes do `stateIn` (ex.: GPS); **coletor** = a tela escutando; `WhileSubscribed(5_000)` = liga com o 1º coletor, e quando o último sai espera 5 s antes de desligar (≈ luz de corredor com temporizador). `collectAsStateWithLifecycle()` sai em background; `collectAsState()` fica. Respondida em 2026-10-22: `WithLifecycle` ✅ (t=5 desliga, t=10 liga de novo); `collectAsState()` ❌ invertido (achou que só funciona em primeiro plano; é o contrário: continua coletando em background, a contagem nunca começa e o GPS fica ligado os 10 s); bateria ✅.
+
+```
+                    t=0 bg    t=5        t=10 volta
+WithLifecycle       0 colet.  GPS OFF    GPS liga de novo
+collectAsState      1 colet.  GPS ON     GPS ON (nunca parou)
+```
+
+**Por que a rotação não reinicia o upstream (resposta dada a pedido):** a rotação destrói e recria a Activity, mas o ViewModel (e o `StateFlow` dentro dele) sobrevive. A tela velha sai (0 coletores, contagem começa), a tela nova entra em menos de 1 s (1 coletor, contagem cancelada). O upstream nunca chega a desligar e a tela nova recebe na hora o último valor guardado no `StateFlow`. Os 5 s são exatamente essa margem: longos o bastante pra uma rotação e curtos o bastante pra economizar em background. Com `WhileSubscribed(0)` a rotação reiniciaria o GPS; com `Eagerly` ele nunca desligaria.
+
+> 📝 Caderno
+> rotação: tela velha sai → tela nova entra em < 1 s → contagem cancelada → upstream nunca parou
+> 5 s = margem da rotação · background longo = desliga
+
+> 📝 Caderno
+> upstream = fonte (GPS) · coletor = tela · WhileSubscribed(5s) = luz de corredor
+> 0 coletores → espera 5 s → desliga · voltou antes → nem desligou
+
+**`MutableStateFlow` × `stateIn`: qual usar no ViewModel (revisão 2026-10-23)**
+
+| O estado vem de... | Use | Exemplo |
+|---|---|---|
+| eventos da tela (o ViewModel decide e grava) | `MutableStateFlow` + `asStateFlow()` + `update` | Guessing Game (chute, tentativas), placar |
+| outro Flow (fonte externa ou derivado) | `flow.stateIn(viewModelScope, WhileSubscribed(5_000), inicial)` | GPS, consulta ao Room, `combine` de vários flows |
+
+O Guessing Game **não precisa** de `stateIn`: não existe fonte externa, todo o estado nasce dos eventos. O `stateIn` volta quando entrar Room/rede/`combine`.
+
+> 📝 Caderno
+> estado nasce de evento → MutableStateFlow (quente, já guarda valor)
+> estado vem de outro Flow → stateIn (transforma frio em StateFlow)
+
+**Como adicionar uma lib (resumo da Etapa 1, 2026-10-23)**
+
+```
+coordenada Maven:  androidx.lifecycle : lifecycle-runtime-compose : 2.11.0
+                   └──── group ─────┘   └──────── name ────────┘   └ versão ┘
+
+1. toml [libraries]:
+   androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycleRuntimeKtx" }
+2. app/build.gradle.kts:
+   implementation(libs.androidx.lifecycle.runtime.compose)   // chave do toml, hífen → ponto
+3. Sync (⇧⌘O / elefante) → ./gradlew assembleDebug
+```
+
+- `libs.x` é **gerado da chave** do toml: toml primeiro, depois Sync, aí o autocomplete conhece.
+- "compose" no nome **não** quer dizer grupo `androidx.compose`: o grupo vem da coordenada.
+- Libs da mesma família (`androidx.lifecycle`) compartilham o `version.ref`: atualiza num lugar só.
+- Sync é ação da IDE (não tem comando); no terminal o build resolve as dependências sozinho. `--refresh-dependencies` força baixar de novo (cache de falha antiga).
+
+> 📝 Caderno
+> coordenada = grupo:nome:versão
+> toml (chave) → Sync → libs.chave.com.pontos no gradle
+> Sync = ⇧⌘O · terminal: ./gradlew assembleDebug [--refresh-dependencies]
+
+**Etapa 2: desenho do estado (fechado em 2026-10-26)**
+
+```
+UiState (tela MOSTRA)               Eventos (tela PEDE)           Escondido no ViewModel
+textoDigitado: String = ""          onTextoDigitadoChange(texto)  numeroSecreto: Int (sorteado no
+chutes: List<Int> = emptyList()     chutar()                        init e no novoJogo)
+resultado: Resultado? = null        novoJogo()                    faixa 1..100
+calculados: erro (texto + faixa), tentativas = chutes.size, acertou = resultado == ACERTOU
+```
+
+- Teste rápido: **quem muda esse valor?** Se é função do ViewModel, mora no ViewModel. Neste projeto nenhum dado do jogo usa `remember*`.
+- Texto fixo (título) não é estado; `Divider` não é estado.
+- O feedback depende do **último chute**, não do texto digitado (senão mudaria enquanto digita), e a tela não sabe calculá-lo (não conhece o segredo) → o ViewModel guarda o `resultado`.
+- Contador + lista = duas fontes da verdade → `tentativas` é `chutes.size`.
+- Sortear dentro do `chutar()` = número novo a cada chute (bug). Sorteia uma vez e guarda.
+
+> 📝 Caderno
+> quem muda o valor? função do ViewModel → mora no ViewModel
+> guardar só o mínimo; o resto é calculado (tentativas = chutes.size)
+> segredo nunca vai pro UiState
+
+**Etapa 3: estrutura de pastas (2026-10-26)**
+
+```
+com/example/guessinggame/
+├─ MainActivity.kt
+└─ ui/
+   ├─ theme/
+   └─ jogo/              ← pacote por feature (≈ src/screens/Game/ no RN)
+      ├─ TelaJogo.kt
+      └─ CampoNumero.kt  (estado e ViewModel entram aqui depois)
+```
+
+- Projeto 1 teve tudo solto em `ui/` (pequeno). Padrão de mercado: **uma pasta por feature/tela**, com view + estado + ViewModel juntos.
+- Studio: botão direito no pacote → New → Package → `ui.jogo` (ponto = pasta aninhada). `package` acompanha a pasta.
+
+> 📝 Caderno
+> pacote por feature: ui/jogo/ = tela + campo + estado + ViewModel
+
+**Teclado numérico:** `keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)` (inteiro; `Decimal` = com vírgula/ponto). O teclado só **sugere**: colar texto ainda passa, então a validação continua no `toIntOrNull()` + faixa.
+
+> 📝 Caderno
+> KeyboardType.Number = inteiro · Decimal = com vírgula
+> teclado sugere, não valida → toIntOrNull() + faixa
+
+**Validação numa linha (2026-10-26):**
+```kotlin
+val erro = valor.isNotEmpty() && valor.trim().toIntOrNull() !in 1..100
+```
+- `in` / `!in` = está (não está) na faixa. `1..100` é um `IntRange`.
+- `!in` aceita `Int?`: `null !in 1..100` → `true` ("não é número" e "fora da faixa" numa checagem só).
+- `&&` curto-circuito: campo vazio → nem calcula o resto (campo abre sem erro).
+- `isNotBlank()` se só espaços também deve contar como vazio.
+- Lembrete do `OutlinedTextField`: `value` + `onValueChange` são obrigatórios; `label = { Text(...) }` é slot, não `String`.
+
+> 📝 Caderno
+> erro = tem texto && número !in 1..100
+> null !in faixa → true · && para no 1º false
+
+**Lambda: TS × Kotlin (2026-11-02)**
+```
+TypeScript:   (novoTexto) => setTexto(novoTexto)
+Kotlin:       { novoTexto -> texto.value = novoTexto }   // val texto = rememberSaveable { mutableStateOf("") }
+Kotlin (by):  { texto = it }                             // var texto by rememberSaveable { mutableStateOf("") }
+```
+- Em Kotlin a lambda inteira fica entre `{ }`; parâmetro antes da `->`, dentro das chaves. Um parâmetro só → `it`.
+- `val x = mutableStateOf()` = a caixa (usa `.value`); `var x by` = o conteúdo direto.
+- Argumento posicional trocado (rótulo no lugar do `valor`) trava o campo → nomear os argumentos.
+- A tela não sabe quem trata o evento: hoje lambda com `rememberSaveable` provisório, depois a função do ViewModel; a tela não muda.
+
+> 📝 Caderno
+> TS (x) => ...   ·   Kotlin { x -> ... }  /  { ... it ... }
+> val + .value  ou  var by (sem .value)
+
+**Erro de build: "requires ... compileSdk of at least 37" (2026-11-02)**
+
+Lib nova (`core-ktx 1.19.1`, `lifecycle 2.11.0`) foi feita com as APIs do Android 37 e exige que o app compile contra ≥ 37. Não é erro de código.
+
+| Campo | Decide | Ponte JS/TS |
+|---|---|---|
+| `compileSdk` | com quais APIs o código **compila** (só o build) | versão do `lib`/`@types` |
+| `targetSdk` | pra qual versão o app diz estar pronto (liga comportamentos novos) | opt-in do modo novo |
+| `minSdk` | Android mais antigo que instala | `browserslist` |
+
+Correção: subir só o `compileSdk` (`version = release(37) { minorApiLevel = 1 }` = 37.1). É seguro: não muda comportamento nem aparelhos suportados. Padrão de mercado: `compileSdk` sempre no mais novo; `targetSdk` sobe com teste.
+
+> 📝 Caderno
+> compileSdk = APIs pra compilar (sobe sem medo)
+> targetSdk = comportamento (sobe testando) · minSdk = aparelho mais velho
+> "requires compileSdk ≥ X" → sobe o compileSdk, não baixa a lib
+
+**Etapa 1 do Projeto 2 (prática):** commitar o projeto criado (o vermelho some), adicionar as duas libs no `libs.versions.toml` e no `app/build.gradle.kts`, Sync, e `./gradlew assembleDebug` de dentro de `GuessingGame/`.
+
+
+#### Etapa 3: tela ligada ao ViewModel e desacoplada (2026-11-09)
+
+**`viewModel()` × `JogoViewModel()` (bug: o campo apagava ao digitar)**
+```kotlin
+fun TelaJogo(jogoViewModel: JogoViewModel = JogoViewModel())   // ✘ instância nova a cada recomposição
+fun TelaJogo(jogoViewModel: JogoViewModel = viewModel())       // ✔ busca a que já existe (cria só na 1ª vez)
+```
+- Digitou "5" → o estado muda → a `TelaJogo` recompõe → o valor padrão roda de novo → `JogoViewModel()` cria um objeto zerado (`typedText = ""`) → o campo "apaga". É a pergunta (c) do placar.
+- Mudar o delegate ou "avisar o Compose" não resolve: o problema é **quem cria** o ViewModel.
+- `viewModel { JogoViewModel() }`: o lambda é a receita usada **só na 1ª criação**. Só é necessário quando o construtor recebe parâmetros; sem parâmetros, `viewModel()` basta.
+- Outras formas: `by viewModels()` na Activity (antes do Compose) e `hiltViewModel()` (só com Hilt).
+
+> 📝 Caderno
+> JogoViewModel() = construtor = novo a cada recomposição ✘
+> viewModel() = busca ou cria (sobrevive à recomposição e à rotação) ✔
+
+**Função × valor na hora de passar argumento**
+```kotlin
+ConteudoJogo(
+    uiState = state,                                      // valor → lê
+    onTypedTextChange = { texto -> jogoViewModel.onTypedTextChange(texto) },  // função → lambda
+    guess = jogoViewModel::guess,                         // função → referência (atalho)
+    range = jogoViewModel.range,                          // valor → lê com "." (não "::")
+)
+```
+- Parâmetro do tipo **função** (`(String) -> Unit`, `() -> Unit`): você entrega uma função, com `{ }` ou com `::`.
+- `jogoViewModel.onTypedTextChange(it)` **sem chaves** chama a função agora (e o `it` nem existe ali). Com `{ }`, entrega a função para ser chamada depois.
+- `::` numa **propriedade** (`jogoViewModel::range`) não dá o valor, dá uma `KProperty0<IntRange>` (uma referência para ela) → erro de tipo.
+- `() -> Unit` não recebe nada; para o texto passar, o tipo tem que ser `(String) -> Unit`.
+- Quando a lambda recebida já tem o tipo certo, repasse direto: `onClick = guess` (sem `{ guess() }`).
+
+**Que string eu passo na `TelaJogo`? Nenhuma.** O texto ainda não existe quando você escreve o código. Ele nasce no `OutlinedTextField` e **sobe** pela cadeia de lambdas; em cada nível o `it` é o que chegou de baixo:
+```
+usuário digita "5" → OutlinedTextField: onValueChange("5")
+  → CampoNumero repassa → ConteudoJogo: onTypedTextChange(it)  // it = "5"
+  → TelaJogo: { jogoViewModel.onTypedTextChange(it) }          // it = "5"
+  → ViewModel grava no estado
+```
+Ponte React: `onChange={(texto) => setTexto(texto)}`.
+
+> 📝 Caderno
+> parâmetro função → { } ou :: · parâmetro valor → lê com .
+> :: em propriedade = KProperty, não o valor
+> o texto sobe do TextField; ninguém inventa a string no meio
+
+**`when (valor)` com enum, como expressão**
+```kotlin
+val mensagem = when (uiState.result) {
+    GuessResult.TOO_HIGH -> "Muito alto! $ultimo é maior do que o número"
+    GuessResult.TOO_LOW  -> "Muito baixo! $ultimo é menor do que o número"
+    GuessResult.SUCCESS  -> "Sucesso! Você acertou, o número é $ultimo"
+}
+Text(text = mensagem, ...)   // um Text só; o que muda é a string
+```
+- O valor do enum vai qualificado: `GuessResult.TOO_HIGH` (só `TOO_HIGH` não compila).
+- `when (x)` com argumento = um caso por valor; sem `else`, o compilador obriga a cobrir todos (entrou caso novo no enum → erro, não bug silencioso). `else` engole casos.
+- `when` sem argumento (como no `guess()`) = condições (`>`, `<`).
+- **Smart cast e `by`:** dentro de `if (state.result != null)`, se `state` vem de `val state by ...`, o Kotlin **não** garante que não é null (o valor é lido de novo a cada acesso) → copie antes para um `val` local. Num **parâmetro** (`uiState: JogoUiState`) o smart cast funciona.
+
+> 📝 Caderno
+> when (enum) { A -> ...; B -> ... } = expressão, sem else, compilador cobra todos
+> by não faz smart cast → val local · parâmetro faz
+
+**Alinhar texto: `horizontalAlignment` × `textAlign`**
+- `horizontalAlignment = Alignment.CenterHorizontally` na `Column` posiciona a **caixa** do filho.
+- Texto longo quebra em 2 linhas → a caixa ocupa a largura toda e as linhas ficam à esquerda. Quem alinha as linhas é o próprio `Text`: `textAlign = TextAlign.Center`.
+- `verticalArrangement = Arrangement.Center` centraliza na vertical. `spacedBy(...)` é o espaço **entre** filhos (com 1 filho não faz nada); o 2º parâmetro dele é um `Alignment.Vertical`, não um `Arrangement`.
+
+> 📝 Caderno
+> horizontalAlignment = onde fica o filho · textAlign = linhas dentro do Text
+
+**`toString()` × `joinToString`**
+- `"${lista}"` → `[80, 30]`; `"${1..100}"` → `1..100` (o template chama o `toString()`).
+- `lista.joinToString(" - ")` → `80 - 30` (≈ `array.join()`); aceita `prefix`, `postfix` e lambda por item.
+- Faixa: `"de ${range.first} a ${range.last}"`.
+
+**Par `_x` / `x` só para estado mutável.** `_uiState`/`uiState` existe para esconder o `MutableStateFlow`. Um `IntRange` é imutável: basta `val range = 1..100` público (sem `exposeRange`).
+
+**Stateful × stateless na prática**
+```
+App:    JogoViewModel ──estado──▶ TelaJogo ──▶ ConteudoJogo
+Painel: ConteudoJogoPreview ──dados de mentira──▶ ConteudoJogo
+```
+- `TelaJogo` (stateful): `viewModel()` + `collectAsStateWithLifecycle()` e chama a `ConteudoJogo`. Sem `@Preview`.
+- `ConteudoJogo` (stateless): recebe `uiState` + lambdas + `modifier: Modifier = Modifier`; não conhece o ViewModel.
+- **Por que a função de preview existe:** o `@Preview` precisa de uma função sem parâmetros, e o painel não tem ViewModel nem clique. A `ConteudoJogoPreview` monta um `JogoUiState` fixo e lambdas vazias `{}` para você ver um estado específico **sem rodar o app**. Não é obrigatória (apagar não muda o app); é ferramenta de desenvolvimento. Dá para ter várias (inicial, mais alto, sucesso). Costuma ser `private`, no mesmo arquivo, fora da outra função.
+- Ponte React: é uma **story do Storybook**.
+
+> 📝 Caderno
+> Tela (ViewModel) → Conteudo (desenha) ← Preview (dados falsos)
+> preview = story do Storybook; não roda no app
+
 ## 7. Clean Architecture — não iniciado
 
 _Teoria será adicionada quando o tópico começar._
 
+> Material de apoio já pronto: o app real **app-pamela** (`~/Developer/app-pamela`) e o PDF `~/Desktop/app-pamela-arquitetura.pdf`, que mostram este tópico aplicado. A teoria daqui entra quando o tópico começar na ordem da trilha.
+
 ## 8. Room Database — não iniciado
 
 _Teoria será adicionada quando o tópico começar._
+
+> Material de apoio já pronto: o app real **app-pamela** (`~/Developer/app-pamela`) e o PDF `~/Desktop/app-pamela-arquitetura.pdf`, que mostram este tópico aplicado. A teoria daqui entra quando o tópico começar na ordem da trilha.
 
 ## 9. Gradle + CI/CD para Android — não iniciado (plano de 2026-09-30)
 

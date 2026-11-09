@@ -19,14 +19,70 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Preformatted, Table, TableStyle, HRFlowable
 )
 from reportlab.lib.enums import TA_LEFT
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.fonts import addMapping
 
 DOCS_DIR = os.path.dirname(os.path.abspath(__file__))
 SOURCE_MD = os.path.join(DOCS_DIR, "TEORIA.md")
 OUTPUT_PDF = os.path.expanduser("~/Desktop/kotlin-estudos-teoria.pdf")
 
+# Fontes TTF do macOS. As fontes padrao do PDF (Helvetica/Courier) so tem Latin-1,
+# entao setas, caixas, ≈ etc. saiam como quadrados.
+SUPP = "/System/Library/Fonts/Supplemental"
+pdfmetrics.registerFont(TTFont("Texto", f"{SUPP}/Arial.ttf"))
+pdfmetrics.registerFont(TTFont("Texto-B", f"{SUPP}/Arial Bold.ttf"))
+pdfmetrics.registerFont(TTFont("Texto-I", f"{SUPP}/Arial Italic.ttf"))
+pdfmetrics.registerFont(TTFont("Texto-BI", f"{SUPP}/Arial Bold Italic.ttf"))
+pdfmetrics.registerFontFamily("Texto", normal="Texto", bold="Texto-B", italic="Texto-I", boldItalic="Texto-BI")
+pdfmetrics.registerFont(TTFont("Simbolos", f"{SUPP}/Arial Unicode.ttf"))  # fallback de simbolos
+pdfmetrics.registerFont(TTFont("Mono", "/System/Library/Fonts/Menlo.ttc", subfontIndex=0))
+pdfmetrics.registerFont(TTFont("Mono-B", "/System/Library/Fonts/Menlo.ttc", subfontIndex=1))
+pdfmetrics.registerFontFamily("Mono", normal="Mono", bold="Mono-B", italic="Mono", boldItalic="Mono-B")
+
+TEXTO_CMAP = pdfmetrics.getFont("Texto").face.charToGlyph
+MONO_CMAP = pdfmetrics.getFont("Mono").face.charToGlyph
+
+# Emoji nao existe em fonte TTF que o reportlab desenha: troca por simbolo equivalente.
+EMOJI = {
+    "\U0001F4DD": "✎",   # 📝 caderno
+    "\u2705": "✔",       # ✅ certo
+    "\u274C": "✘",       # ❌ errado
+    "\u26A0": "(!)",     # ⚠ atencao/parcial
+    "\U0001F4A5": "✸",   # 💥 crash/excecao
+    "\uFE0F": "",        # seletor de variacao de emoji
+}
+# Fora do Menlo (blocos de codigo)
+MONO_TROCA = {chr(0x2460 + n): f"({n + 1})" for n in range(10)}  # ① → (1)
+MONO_TROCA["⋮"] = ":"
+
+
+def trocar_emoji(text):
+    for k, v in EMOJI.items():
+        text = text.replace(k, v)
+    return text
+
+
+def fallback_simbolos(markup):
+    # Caractere que o Arial nao tem vai na fonte de simbolos (tags e entidades sao ASCII).
+    return "".join(
+        f'<font name="Simbolos">{c}</font>' if ord(c) > 0x7F and ord(c) not in TEXTO_CMAP else c
+        for c in markup
+    )
+
+
+def texto_codigo(text):
+    text = trocar_emoji(text)
+    return "".join(
+        MONO_TROCA.get(c, c) if ord(c) > 0x7F and ord(c) not in MONO_CMAP else c
+        for c in text
+    )
+
 
 def build_styles():
     styles = getSampleStyleSheet()
+    for nome in ("Normal", "Title", "Heading1", "Heading2", "Heading3"):
+        styles[nome].fontName = "Texto-B" if nome != "Normal" else "Texto"
 
     styles.add(ParagraphStyle(
         name="DocTitle", parent=styles["Title"], fontSize=22, spaceAfter=4,
@@ -55,7 +111,7 @@ def build_styles():
         name="ListItem", parent=styles["Body"], leftIndent=14, spaceAfter=3,
     ))
     styles.add(ParagraphStyle(
-        name="CodeBlock", fontName="Courier", fontSize=8.5, leading=11,
+        name="CodeBlock", fontName="Mono", fontSize=8.5, leading=11,
         backColor=colors.HexColor("#f4f4f8"), borderPadding=8,
         spaceAfter=10, spaceBefore=2,
     ))
@@ -63,11 +119,11 @@ def build_styles():
 
 
 def inline_markdown(text):
-    text = html.escape(text)
+    text = html.escape(trocar_emoji(text))
     text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
     text = re.sub(r"(?<!`)\*(?!\*)(.+?)\*(?!\*)", r"<i>\1</i>", text)
-    text = re.sub(r"`([^`]+)`", r'<font face="Courier" size="9">\1</font>', text)
-    return text
+    text = re.sub(r"`([^`]+)`", r'<font face="Mono" size="8.5">\1</font>', text)
+    return fallback_simbolos(text)
 
 
 def parse_checkbox_line(line):
@@ -75,7 +131,7 @@ def parse_checkbox_line(line):
     if not m:
         return None
     indent, mark, rest = m.groups()
-    prefix = "&#9745;" if mark == "x" else "&#9744;"
+    prefix = fallback_simbolos("☑" if mark == "x" else "☐")
     depth = len(indent) // 2
     return depth, f"{prefix} {inline_markdown(rest)}"
 
@@ -122,7 +178,7 @@ def render_markdown(md_text, styles):
                 code_lines = []
             else:
                 in_code = False
-                code_text = "\n".join(code_lines)
+                code_text = texto_codigo("\n".join(code_lines))
                 story.append(Preformatted(code_text, styles["CodeBlock"]))
             i += 1
             continue
@@ -172,7 +228,7 @@ def render_markdown(md_text, styles):
                 leftIndent=10, borderColor=colors.grey, borderWidth=0,
             )))
         elif stripped.startswith("- ") or stripped.startswith("* "):
-            story.append(Paragraph("&bull; " + inline_markdown(stripped[2:]), styles["ListItem"]))
+            story.append(Paragraph("• " + inline_markdown(stripped[2:]), styles["ListItem"]))
         elif re.match(r"^\d+\.\s", stripped):
             story.append(Paragraph(inline_markdown(stripped), styles["ListItem"]))
         else:
