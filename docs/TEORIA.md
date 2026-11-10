@@ -2356,6 +2356,161 @@ Painel: ConteudoJogoPreview ──dados de mentira──▶ ConteudoJogo
 > Tela (ViewModel) → Conteudo (desenha) ← Preview (dados falsos)
 > preview = story do Storybook; não roda no app
 
+### Projeto 3: Todo List
+
+#### O app e o que tem de novo (2026-11-09)
+
+Lista de tarefas com CRUD em memória (sem banco ainda): campo + "Adicionar", cada tarefa com `Checkbox` (feita/não feita) e "Remover", contador "2 de 5 feitas" e uma mensagem quando a lista está vazia. Regras: texto vazio não adiciona; girar a tela não perde nada (ViewModel).
+
+Novidades em relação ao Guessing Game:
+- `LazyColumn` + `items(..., key = ...)`: lista que só desenha o que aparece na tela.
+- `data class` com `id`: identidade de cada item.
+- Mudar **um** item de uma lista imutável: `map` + `copy`; remover: `filter`.
+- `Checkbox`: outro componente controlado.
+- `Modifier.weight(1f)`: fazer a lista ocupar o espaço que sobra.
+
+**Plano em fases (ampliado em 2026-11-10, inspirado na tela de cadastro da app-pamela):**
+- **Fase A:** a lista simples acima (esta teoria).
+- **Fase B:** visual da Pamela (cartões brancos arredondados, etiqueta de prioridade colorida, botão "+ Nova tarefa") e uma **tela de cadastro** com título, descrição, prioridade (`SegmentedButton` colorido) e botão fixo "Criar tarefa". Navegação entre as duas telas com **Navigation Compose**. Teoria nova quando chegar: slot (`Secao(titulo) { ... }`), enum com propriedade, `shape`/`colors`, `verticalScroll`, Navigation.
+- **Fase C:** data e hora (`DatePicker`/`TimePicker`), "Me avise" (chips) e "Tocar como alarme" de verdade (`AlarmManager` + notificação). O lembrete depende de data/hora, por isso vêm juntos.
+- Fica de fora: imagens/câmera, snackbar, Hilt e Room (itens mais à frente).
+
+Mockup das 3 telas, com os componentes numerados: `~/Desktop/todo-list-app-esperado.png`.
+
+Como o projeto vai rodar: **mais independente**. O usuário propõe (desenho do estado e código), o Claude corrige; dica só quando pedir.
+
+**Etapa 1 (usuário):** New Project → Empty Activity, Save location `kotlin-basic-projects/ToDo` (pasta própria; o Name não cria pasta sozinho). Repetir o setup do Projeto 2: as libs `lifecycle-viewmodel-compose` e `lifecycle-runtime-compose` (toml + `app/build.gradle.kts`), `compileSdk` → `release(37) { minorApiLevel = 1 }`, Sync, `./gradlew assembleDebug` de dentro de `ToDo/`, commit.
+
+#### Teoria: LazyColumn + key (2026-11-09)
+
+**O problema da `Column` com lista grande.** A `Column` desenha **todos** os filhos, mesmo os que estão fora da tela. Com 5 itens tanto faz; com 1.000, trava. E ela nem rola sozinha.
+
+**`LazyColumn`**: só compõe os itens visíveis (mais uns poucos de margem). Rolou, os que saíram são descartados e os que entraram são criados. Já rola sozinha.
+
+Ponte React Native: `Column` com `for` ≈ `ScrollView` com `.map`; `LazyColumn` ≈ `FlatList`.
+
+Exemplo (cidades favoritas de um app de clima, não é o projeto):
+```kotlin
+data class Cidade(
+    val id: Long,
+    val nome: String,
+    val favorita: Boolean = false,
+)
+
+@Composable
+fun ListaCidades(
+    cidades: List<Cidade>,
+    onAlternarFavorita: (Long) -> Unit,
+    onRemover: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(cidades, key = { it.id }) { cidade ->
+            LinhaCidade(
+                cidade = cidade,
+                onAlternarFavorita = { onAlternarFavorita(cidade.id) },
+                onRemover = { onRemover(cidade.id) },
+            )
+        }
+    }
+}
+```
+- O conteúdo da `LazyColumn` **não** é composable direto: é uma DSL (`LazyListScope`). Dentro dela você chama `items(...)` (vários) ou `item { }` (um só, ex.: um cabeçalho), e **dentro** deles vai o composable.
+- `items(lista) { item -> ... }`: o lambda roda uma vez por item visível (≈ o `renderItem` da `FlatList`). Import: `androidx.compose.foundation.lazy.items` (o `⌥↩` às vezes oferece outro `items`; é esse).
+- A linha recebe uma lambda **sem** parâmetro (`() -> Unit`), e a lista completa o `id`: `{ onRemover(cidade.id) }`. Assim a `LinhaCidade` não precisa saber de `id`.
+- Não colocar `LazyColumn` dentro de uma `Column` com `verticalScroll` (rolagem dentro de rolagem = erro em tempo de execução).
+
+**`key`: por que existe.** Sem `key`, o Compose identifica cada linha pela **posição** (0, 1, 2...). Remova o item 1: o que era o item 2 passa a ser "o item 1", e tudo que estava guardado naquela posição (um `remember` dentro da linha, a animação, a posição de rolagem) fica com o item errado. Com `key = { it.id }`, a identidade é o `id`: o Compose sabe que "a linha da cidade 7" continua sendo ela, só mudou de lugar.
+
+Ponte React: é exatamente o `key` do `.map` / `keyExtractor` da `FlatList`. E pelo mesmo motivo **não** usar o índice nem o texto como chave: o índice muda ao remover, e duas tarefas podem ter o mesmo texto. A chave tem que ser única e estável → um `id`.
+
+> 📝 Caderno
+> Column desenha tudo · LazyColumn só o visível (≈ FlatList)
+> LazyColumn { items(lista, key = { it.id }) { item -> Linha(item) } }
+> key = identidade estável (id), nunca índice nem texto (≈ key do React)
+
+**De onde vem o `id`?** Quem cria o item é o ViewModel, então é ele que gera:
+```kotlin
+private var proximoId = 0L
+
+fun adicionar(nome: String) {
+    _uiState.update { it.copy(cidades = it.cidades + Cidade(id = proximoId++, nome = nome)) }
+}
+```
+- `proximoId++` usa o valor atual e depois soma 1 (0, 1, 2...). Fica fora do UiState, igual ao número secreto do Guessing Game: a tela não precisa dele.
+- Alternativa comum: `UUID.randomUUID().toString()` (id `String`). Com banco (Room, item 8), o próprio banco gera o id.
+
+#### Teoria: mudar e remover um item da lista imutável (2026-11-09)
+
+O UiState guarda `List<Cidade>` (imutável), como a `guessesList`. Nada de alterar o item no lugar: você gera **uma lista nova**.
+
+| Ação | Função | Ideia |
+|---|---|---|
+| adicionar | `lista + item` | lista nova com um a mais (já usado no Guessing Game) |
+| alterar um | `map` + `copy` | percorre todos; no do `id` certo devolve uma cópia alterada, nos outros devolve o mesmo |
+| remover | `filter` | fica com todos **menos** o do `id` |
+
+```kotlin
+fun alternarFavorita(id: Long) {
+    _uiState.update { estado ->
+        estado.copy(
+            cidades = estado.cidades.map { cidade ->
+                if (cidade.id == id) cidade.copy(favorita = !cidade.favorita) else cidade
+            }
+        )
+    }
+}
+
+fun remover(id: Long) {
+    _uiState.update { estado ->
+        estado.copy(cidades = estado.cidades.filter { it.id != id })
+    }
+}
+```
+- Dois `copy`: o de dentro troca **um campo da cidade**; o de fora troca **a lista dentro do estado**.
+- `if` como expressão dentro do `map`: os dois ramos devolvem uma `Cidade`.
+- Ponte JS: `lista.map(c => c.id === id ? { ...c, favorita: !c.favorita } : c)` e `lista.filter(c => c.id !== id)`. Idêntico.
+- **Calcular, não guardar:** "quantas favoritas" = `cidades.count { it.favorita }`, calculado na tela. Não criar um campo no UiState para isso (seriam 2 fontes da verdade, pág. 52).
+
+> 📝 Caderno
+> + adiciona · map + copy altera um · filter remove
+> if (it.id == id) it.copy(...) else it
+> contador = lista.count { ... } (calcula, não guarda)
+
+#### Teoria: Checkbox e weight (2026-11-09)
+
+**`Checkbox`** é controlado, igual ao `TextField`: mostra o que recebe e avisa quando o usuário clica.
+```kotlin
+Row(verticalAlignment = Alignment.CenterVertically) {
+    Checkbox(
+        checked = cidade.favorita,
+        onCheckedChange = { onAlternarFavorita() },   // recebe o Boolean novo; aqui não precisamos dele
+    )
+    Text(cidade.nome, modifier = Modifier.weight(1f))
+    TextButton(onClick = onRemover) { Text("Remover") }
+}
+```
+- `checked` = estado que desce; `onCheckedChange: (Boolean) -> Unit` = evento que sobe. Se o estado não mudar, a caixa não muda (mesma lógica do campo controlado).
+- Texto riscado: `style = TextStyle(textDecoration = TextDecoration.LineThrough)` quando marcado (um `if` expressão escolhe o estilo).
+
+**`Modifier.weight(1f)`**: dentro de `Row`/`Column`, o filho com `weight` fica com **o espaço que sobra** depois que os outros mediram. Ponte CSS: `flex: 1`.
+- Na `Row` acima: o `Checkbox` e o botão ficam com o tamanho deles, e o texto ocupa o meio (empurra o "Remover" para a direita).
+- Na tela: `Column { campo; LazyColumn(Modifier.weight(1f)); contador }` → a lista ocupa o meio e o contador fica sempre embaixo, visível.
+- Só existe dentro de `Row`/`Column` (é do escopo deles).
+
+> 📝 Caderno
+> Checkbox(checked, onCheckedChange) = campo controlado
+> weight(1f) = ocupa o que sobra (≈ flex: 1)
+
+**Perguntas pra fixar (responder no caderno):**
+- (a) Por que `LazyColumn` e não `Column` com `for` numa lista que pode crescer?
+- (b) Usei o texto da tarefa como `key`. O que pode dar errado? E com o índice?
+- (c) Escreva a função que marca/desmarca a tarefa de um `id` (com `map` + `copy`). Por que não dá para fazer `tarefa.feita = true`?
+- (d) "2 de 5 feitas": esse número vai no UiState? Por quê?
+
 ## 7. Clean Architecture — não iniciado
 
 _Teoria será adicionada quando o tópico começar._
