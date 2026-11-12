@@ -9,7 +9,7 @@ import androidx.compose.ui.unit.dp
 
 
 @Composable
-fun TextField(valor: String, onTextChange: (String) -> Unit, modifier: Modifier = Modifier) {
+fun TextFieldComponent(valor: String, onTextChange: (String) -> Unit, modifier: Modifier = Modifier) {
     OutlinedTextField(
         value = valor,
         onTextChange,
